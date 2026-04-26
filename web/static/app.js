@@ -161,15 +161,25 @@ document.addEventListener("keydown", (e) => {
 // Reset the detail pane to the empty-state placeholder. Exposed globally so
 // the close-X button in detail.html can call it.
 window.jia_closeDetail = function () {
+  // Hide the detail pane (CSS does the rest — grid takes full width).
+  document.querySelector(".jia-app")?.classList.remove("has-detail");
+  // Clear AG Grid's row selection so the highlight goes away.
+  if (window._jiaGrid && typeof window._jiaGrid.deselectAll === "function") {
+    window._jiaGrid.deselectAll();
+  }
+  window._jiaSelectedHash = null;
+  // Re-fit columns once the CSS transition lands (~180ms).
+  setTimeout(() => window._jiaGrid && window._jiaGrid.sizeColumnsToFit(), 220);
+  // Reset the detail content so a re-open starts cleanly.
   const detail = document.getElementById("detail");
-  if (!detail) return;
-  detail.innerHTML = `
-    <div class="empty-state h-full flex flex-col items-center justify-center text-center px-4 py-16 text-ink-3">
-      <div class="text-2xl mb-4 opacity-40">◇</div>
-      <h3 class="text-sm font-semibold text-ink mb-1">No job selected</h3>
-      <p class="text-xs">Click a row, or press <kbd class="kbd kbd-xs">j</kbd>/<kbd class="kbd kbd-xs">k</kbd></p>
-    </div>`;
-  document.querySelectorAll("tr.row.selected").forEach((r) => r.classList.remove("selected"));
+  if (detail) {
+    detail.innerHTML = `
+      <div class="empty-state h-full flex flex-col items-center justify-center text-center px-4 py-16 text-ink-3">
+        <div class="text-2xl mb-4 opacity-40">◇</div>
+        <h3 class="text-sm font-semibold text-ink mb-1">No job selected</h3>
+        <p class="text-xs">Click a row, or press <kbd>j</kbd>/<kbd>k</kbd></p>
+      </div>`;
+  }
 };
 
 // Track which row is currently selected. AG Grid sets this in grid.js when a

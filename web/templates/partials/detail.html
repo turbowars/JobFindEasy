@@ -76,13 +76,15 @@
     <sl-button size="small"
                data-action="generate-resume"
                hx-post="/actions/generate/resume/{{ job.hash }}"
-               hx-swap="none">
+               hx-swap="none"
+               hx-on::after-request="htmx.ajax('GET', '/partials/artifacts/{{ job.hash }}', {target: '#artifacts-{{ job.hash }}', swap: 'outerHTML'})">
       Generate resume
     </sl-button>
 
     <sl-button variant="text" size="small"
                hx-post="/actions/generate/cover/{{ job.hash }}"
-               hx-swap="none">
+               hx-swap="none"
+               hx-on::after-request="htmx.ajax('GET', '/partials/artifacts/{{ job.hash }}', {target: '#artifacts-{{ job.hash }}', swap: 'outerHTML'})">
       Cover letter
     </sl-button>
   </div>
@@ -140,14 +142,26 @@
   <!-- JD -->
   <details>
     <summary class="text-[11px] uppercase tracking-[0.1em] text-ink-3 cursor-pointer select-none py-1 hover:text-ink-2">Job description</summary>
-    <pre class="whitespace-pre-wrap font-sans text-xs leading-relaxed max-h-[400px] overflow-auto p-3 mt-1 bg-base-200/30 rounded text-ink-2">{{ job._clean_description }}</pre>
+    <div class="relative mt-1">
+      <sl-icon-button name="clipboard"
+                      label="Copy job description"
+                      class="absolute top-1 right-1 z-10"
+                      style="font-size:0.95rem;"
+                      data-copy="{{ job._clean_description|e }}"
+                      title="Copy job description"></sl-icon-button>
+      <pre class="whitespace-pre-wrap font-sans text-xs leading-relaxed max-h-[400px] overflow-auto p-3 pr-8 bg-base-200/30 rounded text-ink-2">{{ job._clean_description }}</pre>
+    </div>
   </details>
 
-  <!-- Auto-refreshing artifacts (preview + scores) -->
+  <!-- Initial artifacts shell. Swap is outerHTML because the response
+       wraps itself in a (conditionally-polling) div with the same id.
+       The response stops polling once nothing is in flight, which keeps
+       the user's scroll position inside the resume preview from getting
+       reset every 2.5s. -->
   <div id="artifacts-{{ job.hash }}"
        hx-get="/partials/artifacts/{{ job.hash }}"
        hx-trigger="load, every 2.5s"
-       hx-swap="innerHTML">
+       hx-swap="outerHTML">
     <sl-skeleton effect="pulse" style="height:32px"></sl-skeleton>
   </div>
 

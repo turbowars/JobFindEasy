@@ -48,14 +48,19 @@ def hr_simulate(
 ) -> dict:
     """Returns {hr_score, rationale, weakest_areas} or {} on failure."""
     model = model or os.environ.get("SCORING_MODEL", "anthropic/claude-haiku-4.5")
+    # Resume text was previously truncated at 8000 chars — too tight for a
+    # 14-year resume with 7+ roles. The HR scorer was complaining the resume
+    # "cuts off mid-sentence at final role" because of this. 32000 chars
+    # (~8000 tokens) is well within Haiku's 200K context budget and gives
+    # the model the full employment history.
     user = f"""ROLE: {jd_title}
 COMPANY: {jd_company}
 
 JOB DESCRIPTION:
-{jd_text[:6000] if jd_text else "(JD not provided — score conservatively)"}
+{jd_text[:8000] if jd_text else "(JD not provided — score conservatively)"}
 
 CANDIDATE RESUME (plain text):
-{resume_text[:8000] if resume_text else "(empty)"}
+{resume_text[:32000] if resume_text else "(empty)"}
 
 Score now."""
     try:

@@ -101,6 +101,9 @@
     htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
     window._jiaSelectedHash = hash;
     document.querySelector(".jia-app")?.classList.add("has-detail");
+    // Nudge AG Grid to redraw header/columns at the new container width
+    // after the CSS grid transition finishes (~180ms).
+    setTimeout(() => window._jiaGrid && window._jiaGrid.sizeColumnsToFit(), 220);
   }
 
   const columnDefs = [

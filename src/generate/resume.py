@@ -225,9 +225,14 @@ def _generate_structured(
     # cache_system=True: the 54KB skill content + template is the dominant
     # input cost (~14k tokens). Cached after the first call within 5 min,
     # cutting Sonnet input cost ~40% on subsequent generations.
+    #
+    # max_tokens=8192: a complete IC-track resume JSON with 7 roles, 5-6
+    # bullets each, 4 projects, structured skills can run ~4-5k tokens.
+    # 4096 was right at the edge and would occasionally truncate the final
+    # role, causing the HR scorer to flag "resume cuts off mid-sentence".
     text = chat(
         system=sys_prompt, user=user, model=model,
-        max_tokens=4096, cache_system=True,
+        max_tokens=8192, cache_system=True,
     ).strip()
     if text.startswith("```"):
         text = text.strip("`")

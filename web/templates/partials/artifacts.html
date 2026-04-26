@@ -1,4 +1,20 @@
-{# Artifacts block — auto-polled every 2.5s. Resume + cover preview + scores. #}
+{# Artifacts block — wrapper conditionally polls.
+
+   While any generation is in flight (pending_resume/cover), the wrapper
+   keeps polling every 2.5s. Once nothing is pending, the response is a
+   static div with NO polling — meaning the resume preview won't keep
+   re-rendering and resetting the user's scroll position. #}
+
+{% set keep_polling = pending_resume or pending_cover %}
+
+{% if keep_polling %}
+<div id="artifacts-{{ job.hash }}"
+     hx-get="/partials/artifacts/{{ job.hash }}"
+     hx-trigger="every 2.5s"
+     hx-swap="outerHTML">
+{% else %}
+<div id="artifacts-{{ job.hash }}">
+{% endif %}
 
 {% if not (resume_path or cover_path or pending_resume or pending_cover) %}
 {% else %}
@@ -25,7 +41,10 @@
         <sl-button variant="primary" size="small" href="/files/resume/{{ job.hash }}">Download .docx</sl-button>
         <sl-button variant="text" size="small"
                    hx-post="/actions/regenerate/resume/{{ job.hash }}"
-                   hx-swap="none">Regenerate</sl-button>
+                   hx-swap="none"
+                   hx-on::after-request="htmx.ajax('GET', '/partials/artifacts/{{ job.hash }}', {target: '#artifacts-{{ job.hash }}', swap: 'outerHTML'})">
+          Regenerate
+        </sl-button>
       </div>
 
       {% if resume_html %}
@@ -100,7 +119,10 @@
         <sl-button variant="primary" size="small" href="/files/cover/{{ job.hash }}">Download .docx</sl-button>
         <sl-button variant="text" size="small"
                    hx-post="/actions/regenerate/cover/{{ job.hash }}"
-                   hx-swap="none">Regenerate</sl-button>
+                   hx-swap="none"
+                   hx-on::after-request="htmx.ajax('GET', '/partials/artifacts/{{ job.hash }}', {target: '#artifacts-{{ job.hash }}', swap: 'outerHTML'})">
+          Regenerate
+        </sl-button>
       </div>
       {% if cover_html %}
         <div class="rounded border border-base-300/40 bg-base-200/20">
@@ -121,3 +143,7 @@
 {% endif %}
 
 {% endif %}
+
+{# Close the polling/static wrapper opened at the top #}
+</div>
+
