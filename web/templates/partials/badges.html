@@ -1,0 +1,24 @@
+{# Live count badges — polled every 5s.
+
+   Hierarchy: only the "strong" count gets the accent color (the thing that
+   actually matters). Everything else is muted. Follow-up gets a subtle
+   underline accent only when > 0 (signal worth catching). #}
+
+<div class="grid grid-cols-2 gap-1.5">
+  <div class="rounded p-2 bg-base-200/30">
+    <div class="text-[9px] uppercase tracking-[0.1em] text-ink-3">Strong</div>
+    <div class="text-base font-semibold tabular-nums {{ 'text-accent' if strong > 0 else 'text-ink-3' }}">{{ strong }}</div>
+  </div>
+  <div class="rounded p-2 bg-base-200/30">
+    <div class="text-[9px] uppercase tracking-[0.1em] text-ink-3">Applied</div>
+    <div class="text-base font-semibold tabular-nums text-ink">{{ applied }}</div>
+  </div>
+  <div class="rounded p-2 bg-base-200/30" title="Applied 7+ days ago — follow up">
+    <div class="text-[9px] uppercase tracking-[0.1em] text-ink-3">Follow-up</div>
+    <div class="text-base font-semibold tabular-nums {{ 'text-accent' if pending_followup > 0 else 'text-ink-3' }}">{{ pending_followup }}</div>
+  </div>
+  <div class="rounded p-2 bg-base-200/30">
+    <div class="text-[9px] uppercase tracking-[0.1em] text-ink-3">Total</div>
+    <div class="text-base font-semibold tabular-nums text-ink-2">{{ total }}</div>
+  </div>
+</div>

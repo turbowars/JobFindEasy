@@ -1,0 +1,592 @@
+/* JobFindEasy — minimal CSS layered on top of Tailwind + Shoelace.
+   Keep this file tiny — anything Tailwind can express belongs in markup. */
+
+/* ─────────────────────────────────────────────────────────────────
+   Shoelace theme overrides — pin the primary scale to our emerald
+   accent and tighten the dark-theme surfaces to match our palette.
+   The Shoelace autoloader applies the dark theme via .sl-theme-dark
+   on <html>; these overrides win because of higher specificity.
+   ───────────────────────────────────────────────────────────────── */
+:root.sl-theme-dark,
+.sl-theme-dark {
+  /* Primary scale — our single accent */
+  --sl-color-primary-50:  #052e1f;
+  --sl-color-primary-100: #064e3b;
+  --sl-color-primary-200: #065f46;
+  --sl-color-primary-300: #047857;
+  --sl-color-primary-400: #059669;
+  --sl-color-primary-500: #10b981;
+  --sl-color-primary-600: #10b981;
+  --sl-color-primary-700: #34d399;
+  --sl-color-primary-800: #6ee7b7;
+  --sl-color-primary-900: #a7f3d0;
+  --sl-color-primary-950: #d1fae5;
+
+  /* Success and danger collapse to our two semantic colors */
+  --sl-color-success-600: #10b981;
+  --sl-color-danger-600:  #dc2626;
+
+  /* Neutral surfaces and ink — match our palette exactly */
+  --sl-color-neutral-0:    #0d0d0e;  /* page bg */
+  --sl-color-neutral-50:   #0d0d0e;
+  --sl-color-neutral-100:  #0f0f10;
+  --sl-color-neutral-200:  #161618;
+  --sl-color-neutral-300:  #1d1d20;
+  --sl-color-neutral-400:  #26262a;
+  --sl-color-neutral-500:  #2c2c30;
+  --sl-color-neutral-600:  rgba(232, 232, 232, 0.38);
+  --sl-color-neutral-700:  rgba(232, 232, 232, 0.62);
+  --sl-color-neutral-800:  rgba(232, 232, 232, 0.78);
+  --sl-color-neutral-900:  #e8e8e8;
+  --sl-color-neutral-950:  #f0f0f0;
+  --sl-color-neutral-1000: #ffffff;
+
+  /* Body / panel surfaces */
+  --sl-panel-background-color: #0d0d0e;
+  --sl-panel-border-color:     rgba(38, 38, 42, 0.5);
+
+  /* Inputs */
+  --sl-input-background-color:           rgba(22, 22, 24, 0.55);
+  --sl-input-background-color-hover:     rgba(22, 22, 24, 0.85);
+  --sl-input-background-color-focus:     rgba(22, 22, 24, 0.95);
+  --sl-input-border-color:               rgba(232, 232, 232, 0.10);
+  --sl-input-border-color-hover:         rgba(232, 232, 232, 0.22);
+  --sl-input-border-color-focus:         #10b981;
+  --sl-input-border-radius-small:        6px;
+  --sl-input-border-radius-medium:       6px;
+  --sl-input-border-radius-large:        8px;
+  --sl-input-color:                      #e8e8e8;
+  --sl-input-placeholder-color:          rgba(232, 232, 232, 0.32);
+
+  /* Focus ring */
+  --sl-focus-ring-color: rgba(16, 185, 129, 0.35);
+  --sl-focus-ring-width: 2px;
+  --sl-focus-ring: 0 0 0 3px var(--sl-focus-ring-color);
+
+  /* Border radius for buttons / cards */
+  --sl-border-radius-small:  4px;
+  --sl-border-radius-medium: 6px;
+  --sl-border-radius-large:  8px;
+
+  /* Tighter font scale — Shoelace defaults are a touch large */
+  --sl-font-size-x-small: 0.7rem;
+  --sl-font-size-small:   0.78rem;
+  --sl-font-size-medium:  0.875rem;
+  --sl-font-size-large:   1rem;
+
+  /* Shadows — lighter for our flatter dark UI */
+  --sl-shadow-x-small: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --sl-shadow-small:   0 2px 6px rgba(0, 0, 0, 0.35);
+  --sl-shadow-medium:  0 4px 12px rgba(0, 0, 0, 0.4);
+  --sl-shadow-large:   0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Buttons — slightly tighter padding to match the existing density */
+sl-button::part(base) {
+  font-weight: 500;
+}
+sl-button[variant="primary"]::part(base) {
+  color: #0a0a0a;
+}
+sl-button[size="small"]::part(base) {
+  min-height: 28px;
+  padding: 0 0.7rem;
+}
+sl-button[size="medium"]::part(base) {
+  min-height: 32px;
+}
+
+/* Inputs — pin to our 32px height for consistency with the toolbar */
+sl-input::part(base),
+sl-select::part(combobox) {
+  min-height: 32px;
+}
+
+/* Suppress browser-default focus outlines on BOTH the host AND the inner
+   shadow-DOM parts. Shoelace's host elements draw their own ring on
+   ::part(base) via box-shadow, but the browser also draws a default
+   2px white outline on whichever element actually owns focus — which
+   for <sl-input> is the internal <input> exposed as part="input".
+   Both must be suppressed. */
+sl-input,
+sl-input:focus,
+sl-input:focus-visible,
+sl-input::part(base),
+sl-input::part(input),
+sl-input::part(form-control),
+sl-textarea,
+sl-textarea:focus,
+sl-textarea:focus-visible,
+sl-textarea::part(base),
+sl-textarea::part(textarea),
+sl-select,
+sl-select:focus,
+sl-select:focus-visible,
+sl-select::part(combobox),
+sl-checkbox:focus,
+sl-checkbox:focus-visible,
+sl-checkbox::part(control),
+sl-switch:focus,
+sl-switch:focus-visible,
+sl-switch::part(control),
+sl-button:focus,
+sl-button:focus-visible,
+sl-button::part(base),
+sl-icon-button:focus,
+sl-icon-button:focus-visible,
+sl-icon-button::part(base),
+sl-option:focus,
+sl-option:focus-visible {
+  outline: none !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   NUCLEAR sl-input / sl-textarea / sl-select reset.
+   Whatever Shoelace's defaults are, these are the styles that ship.
+   `!important` is intentional — we're overriding component internals.
+   ───────────────────────────────────────────────────────────────── */
+sl-input::part(form-control),
+sl-textarea::part(form-control),
+sl-select::part(form-control) {
+  background: transparent !important;
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+sl-input::part(base),
+sl-textarea::part(base),
+sl-select::part(combobox) {
+  background-color: rgba(22, 22, 24, 0.55) !important;
+  border: 1px solid rgba(232, 232, 232, 0.10) !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+sl-input::part(input),
+sl-textarea::part(textarea),
+sl-select::part(display-input) {
+  background-color: transparent !important;
+  color: #e8e8e8 !important;
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+sl-input::part(prefix),
+sl-input::part(suffix),
+sl-input::part(clear-button) {
+  color: rgba(232, 232, 232, 0.45) !important;
+}
+
+/* Hover state */
+sl-input:hover:not(:focus-within)::part(base),
+sl-textarea:hover:not(:focus-within)::part(base),
+sl-select:hover:not(:focus-within)::part(combobox) {
+  background-color: rgba(22, 22, 24, 0.85) !important;
+  border-color: rgba(232, 232, 232, 0.22) !important;
+}
+
+/* Focus state — accent emerald glow + border */
+sl-input:focus-within::part(base),
+sl-textarea:focus-within::part(base),
+sl-select:focus-within::part(combobox) {
+  background-color: rgba(22, 22, 24, 0.95) !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.35) !important;
+  outline: none !important;
+}
+
+sl-button:focus-visible::part(base) {
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.4) !important;
+}
+
+/* Checkbox + switch — accent the checked state */
+sl-checkbox::part(control--checked),
+sl-checkbox::part(control--indeterminate) {
+  background-color: #10b981;
+  border-color: #10b981;
+}
+sl-switch::part(control--checked) {
+  background-color: #10b981;
+  border-color: #10b981;
+}
+
+/* Progress ring — accent track + indicator */
+sl-progress-ring {
+  --indicator-color: #10b981;
+  --track-color: rgba(38, 38, 42, 0.6);
+  --track-width: 4px;
+  --indicator-width: 4px;
+}
+sl-progress-ring.dim {
+  --indicator-color: rgba(232, 232, 232, 0.38);
+}
+
+/* Spinner — accent */
+sl-spinner {
+  --indicator-color: #10b981;
+  --track-color: rgba(38, 38, 42, 0.6);
+}
+sl-spinner.dim {
+  --indicator-color: rgba(232, 232, 232, 0.38);
+}
+
+/* Skeleton — subtle pulse using our surface tones */
+sl-skeleton {
+  --color: rgba(38, 38, 42, 0.5);
+  --sheen-color: rgba(232, 232, 232, 0.04);
+  --border-radius: 4px;
+}
+
+/* Tag — quieter than default badge */
+sl-tag::part(base) {
+  background: rgba(22, 22, 24, 0.6);
+  border-color: rgba(232, 232, 232, 0.1);
+  color: rgba(232, 232, 232, 0.72);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+}
+sl-tag[variant="success"]::part(base) {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #10b981;
+}
+sl-tag[variant="danger"]::part(base) {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.4);
+  color: #dc2626;
+}
+
+/* kbd — small key indicator (we render plain <kbd> now, no DaisyUI) */
+kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 0.65rem;
+  font-family: ui-monospace, monospace;
+  line-height: 1;
+  color: rgba(232, 232, 232, 0.78);
+  background: rgba(22, 22, 24, 0.85);
+  border: 1px solid rgba(232, 232, 232, 0.12);
+  border-radius: 3px;
+  vertical-align: 2px;
+}
+
+html, body { height: 100%; margin: 0; }
+
+/* Adaptive layout — sidebar + table by default (table takes full remaining
+   width). When a row is selected, the .has-detail class is added on .jia-app
+   and the right detail pane appears, splitting the space.
+   Each pane scrolls independently; the body never scrolls. */
+.jia-app {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem;
+  height: 100vh;
+  overflow: hidden;
+  transition: grid-template-columns 0.18s ease;
+}
+
+.jia-app.has-detail {
+  grid-template-columns: 260px minmax(0, 1.1fr) minmax(0, 1fr);
+}
+
+.jia-app > .pane {
+  height: 100%;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+/* Hide the detail pane when no job is selected so the grid can use the
+   full remaining width. The pane re-appears the moment .has-detail is
+   set on .jia-app (toggled from grid.js / app.js). */
+.jia-app:not(.has-detail) > .detail-pane {
+  display: none;
+}
+
+@media (max-width: 1280px) {
+  html, body { height: auto; }
+  .jia-app,
+  .jia-app.has-detail {
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    height: auto;
+    overflow: visible;
+  }
+  .jia-app > .pane { height: auto; overflow-y: visible; }
+  .jia-app.has-detail > .pane.detail-pane { grid-column: 1 / -1; }
+}
+
+@media (max-width: 768px) {
+  .jia-app,
+  .jia-app.has-detail { grid-template-columns: 1fr; padding: 0.5rem; }
+}
+
+/* Per-cell copy buttons — subtle, hover-revealed. */
+.jia-copyable { position: relative; }
+.jia-copyable .copy-btn {
+  position: absolute;
+  right: 0.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.jia-copyable:hover .copy-btn { opacity: 1; }
+
+/* Row interactions — accent-only signal for selection. */
+tr.row { cursor: pointer; }
+tr.row:hover { background-color: oklch(var(--b2) / 0.5); }
+tr.row.selected {
+  background-color: oklch(var(--p) / 0.06);
+  box-shadow: inset 2px 0 0 0 oklch(var(--p));
+  opacity: 1 !important;  /* selection wins over the score-tier opacity */
+}
+
+/* Resume preview rendered HTML — make mammoth output readable inside the
+   detail pane's bordered container. */
+.jia-prose p { margin: 0.4em 0; }
+.jia-prose ul { margin: 0.4em 0 0.4em 1.2em; list-style: disc; }
+.jia-prose strong { font-weight: 600; }
+.jia-prose em { font-style: italic; color: oklch(var(--bc) / 0.65); }
+
+/* Toast (used by app.js flashMessage). */
+#flash {
+  position: fixed; bottom: 1rem; right: 1rem;
+  z-index: 50;
+  transition: opacity 0.3s;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Form fields — one consistent system across input/select/textarea.
+   Used by the toolbar search, the autoscrape config, the notes textarea,
+   and any future form. No DaisyUI variants, no per-element overrides.
+   ───────────────────────────────────────────────────────────────── */
+
+:root {
+  --jia-field-bg:          rgba(22, 22, 24, 0.55);
+  --jia-field-bg-hover:    rgba(22, 22, 24, 0.85);
+  --jia-field-bg-focus:    rgba(22, 22, 24, 0.95);
+  --jia-field-border:      rgba(232, 232, 232, 0.10);
+  --jia-field-border-hover: rgba(232, 232, 232, 0.22);
+  --jia-field-border-focus: #10b981;
+  --jia-field-ring-focus:  rgba(16, 185, 129, 0.18);
+  --jia-field-text:        #e8e8e8;
+  --jia-field-placeholder: rgba(232, 232, 232, 0.32);
+  --jia-field-height:      32px;
+  --jia-field-radius:      6px;
+}
+
+.jia-input,
+.jia-select,
+.jia-textarea {
+  display: block;
+  width: 100%;
+  height: var(--jia-field-height);
+  padding: 0 0.65rem;
+  background: var(--jia-field-bg);
+  border: 1px solid var(--jia-field-border);
+  border-radius: var(--jia-field-radius);
+  color: var(--jia-field-text);
+  font-size: 13px;
+  line-height: 1;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.02);
+}
+
+/* textarea overrides height + adds vertical-only resize. */
+.jia-textarea {
+  height: auto;
+  min-height: 72px;
+  padding: 0.5rem 0.65rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.jia-input:hover:not(:focus),
+.jia-select:hover:not(:focus),
+.jia-textarea:hover:not(:focus) {
+  background: var(--jia-field-bg-hover);
+  border-color: var(--jia-field-border-hover);
+}
+
+.jia-input:focus,
+.jia-select:focus,
+.jia-textarea:focus {
+  outline: none;
+  background: var(--jia-field-bg-focus);
+  border-color: var(--jia-field-border-focus);
+  box-shadow: 0 0 0 3px var(--jia-field-ring-focus);
+}
+
+.jia-input::placeholder,
+.jia-textarea::placeholder {
+  color: var(--jia-field-placeholder);
+}
+
+.jia-input:disabled,
+.jia-select:disabled,
+.jia-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Search input variant — leading icon (set via wrapper in markup). */
+.jia-input.has-leading-icon {
+  padding-left: 1.85rem;
+}
+
+/* Hide the browser-default spinner on number inputs. They look broken on
+   any dark theme, and chevron arrows belong in select widgets only. */
+.jia-input[type="number"] {
+  -moz-appearance: textfield;
+  font-variant-numeric: tabular-nums;
+}
+.jia-input[type="number"]::-webkit-outer-spin-button,
+.jia-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Selects get a custom chevron (matches the dark theme — no browser default). */
+.jia-select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(232,232,232,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  padding-right: 1.8rem;
+  cursor: pointer;
+}
+.jia-select:focus {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2310b981' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+}
+/* Selected option in dropdown menus (browser-styled, but we can theme via
+   color-scheme so the popup uses dark surfaces on macOS/Linux). */
+.jia-select option {
+  background: #161618;
+  color: #e8e8e8;
+}
+
+/* Clean, themed checkboxes used outside DaisyUI components. */
+.jia-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--jia-field-border-hover);
+  border-radius: 4px;
+  background: var(--jia-field-bg);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s;
+}
+.jia-checkbox:hover {
+  border-color: rgba(232, 232, 232, 0.4);
+}
+.jia-checkbox:checked {
+  background: #10b981;
+  border-color: #10b981;
+}
+.jia-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid #0a0a0a;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.jia-checkbox:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--jia-field-ring-focus);
+}
+
+/* Lightweight label preceding a small field. */
+.jia-field-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(232, 232, 232, 0.45);
+  margin-bottom: 4px;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   AG Grid — recolor Quartz Dark to match the 3-color palette.
+   ───────────────────────────────────────────────────────────────── */
+.jia-grid {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  --ag-background-color:        #0d0d0e;
+  --ag-foreground-color:        #e8e8e8;
+  --ag-secondary-foreground-color: rgba(232, 232, 232, 0.62);
+  --ag-disabled-foreground-color:  rgba(232, 232, 232, 0.30);
+  --ag-header-background-color: #0d0d0e;
+  --ag-header-foreground-color: rgba(232, 232, 232, 0.55);
+  --ag-odd-row-background-color: #0d0d0e;
+  --ag-row-hover-color:         rgba(22, 22, 24, 0.6);
+  --ag-selected-row-background-color: rgba(16, 185, 129, 0.06);
+  --ag-border-color:            rgba(38, 38, 42, 0.5);
+  --ag-secondary-border-color:  rgba(38, 38, 42, 0.4);
+  --ag-row-border-color:        rgba(38, 38, 42, 0.3);
+  --ag-header-column-separator-color: transparent;
+  --ag-header-column-resize-handle-color: rgba(38, 38, 42, 0.8);
+  --ag-input-focus-border-color: #10b981;
+  --ag-control-panel-background-color: #161618;
+  --ag-subheader-background-color: #161618;
+  --ag-cell-horizontal-padding: 0.6rem;
+  --ag-grid-size: 5px;
+  --ag-font-family: inherit;
+  --ag-font-size: 13px;
+  --ag-active-color: #10b981;
+  --ag-checkbox-checked-color: #10b981;
+  --ag-range-selection-border-color: #10b981;
+  --ag-range-selection-background-color: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(38, 38, 42, 0.5);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Header text uppercase + tracking to match our design language. */
+.jia-grid .ag-header-cell-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Selected row gets accent left border (matches our row highlight pattern). */
+.jia-grid .ag-row.row-selected,
+.jia-grid .ag-row-selected {
+  box-shadow: inset 2px 0 0 0 #10b981;
+}
+
+/* Score-tier opacity hierarchy on the row level (matches HTMX table). */
+.jia-grid .ag-row.row-strong   { opacity: 1; }
+.jia-grid .ag-row.row-possible { opacity: 0.85; }
+.jia-grid .ag-row.row-stretch  { opacity: 0.65; }
+.jia-grid .ag-row.row-weak     { opacity: 0.5; }
+.jia-grid .ag-row:hover         { opacity: 1 !important; }
+
+/* Floating filter inputs match the rest of the form fields. */
+.jia-grid .ag-floating-filter-input,
+.jia-grid input.ag-input-field-input {
+  background: rgba(22, 22, 24, 0.4) !important;
+  border-radius: 4px !important;
+  font-size: 12px !important;
+}
+
+/* Pagination footer — quieter typography. */
+.jia-grid .ag-paging-panel {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  border-top: 1px solid rgba(38, 38, 42, 0.5);
+  background: #0d0d0e;
+}

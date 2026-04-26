@@ -1,0 +1,70 @@
+{# Auto-scrape control — polled every 5s. #}
+
+<div class="space-y-2.5">
+
+  <sl-switch size="small"
+             {{ 'checked' if s.enabled else '' }}
+             hx-post="/actions/autoscrape/toggle"
+             hx-trigger="sl-change"
+             hx-vals='js:{"enabled": event.target.checked ? "on" : "off"}'
+             hx-swap="none">
+    <span class="text-xs font-medium">Enabled</span>
+  </sl-switch>
+
+  <div>
+    <div class="jia-field-label">Interval</div>
+    <sl-select size="small"
+               value="{{ s.interval_seconds }}"
+               hx-post="/actions/autoscrape/config"
+               hx-trigger="sl-change"
+               hx-vals='js:{"interval_seconds": event.target.value, "score_limit": document.querySelector("[data-score-limit]").value}'
+               hx-swap="none">
+      {% for label, secs in intervals %}
+        <sl-option value="{{ secs }}">{{ label }}</sl-option>
+      {% endfor %}
+    </sl-select>
+  </div>
+
+  <div>
+    <div class="jia-field-label">Score limit / cycle</div>
+    <sl-input type="number"
+              size="small"
+              value="{{ s.score_limit }}"
+              min="10" max="500" step="10"
+              data-score-limit
+              hx-post="/actions/autoscrape/config"
+              hx-trigger="sl-change"
+              hx-vals='js:{"interval_seconds": document.querySelector("sl-select[value]")?.value || "{{ s.interval_seconds }}", "score_limit": event.target.value}'
+              hx-swap="none"></sl-input>
+  </div>
+
+  <div class="text-[11px] leading-relaxed">
+    {% if s.in_progress %}
+      <span class="text-accent flex items-center gap-1.5">
+        <sl-spinner style="font-size:0.7rem;"></sl-spinner>
+        Running…
+      </span>
+    {% elif s.enabled %}
+      <span class="text-ink-3">Last:</span> <span class="text-ink-2">{{ fmt_relative(s.last_run_at) }}</span>
+      <span class="text-ink-3"> · Next:</span> <span class="text-ink-2">{{ fmt_relative(s.next_run_at) }}</span>
+    {% else %}
+      <span class="text-ink-3">Off.</span>
+    {% endif %}
+  </div>
+
+  {% set last = s.last_run_summary %}
+  {% if last %}
+    <div class="text-[10px] text-ink-3 leading-relaxed tabular-nums">
+      <span class="text-ink-2">+{{ last.new or 0 }}</span> new ·
+      {{ last.skipped or 0 }} dup ·
+      {{ last.prefilter_pass or 0 }} pf ·
+      {{ last.scored or 0 }} scored ·
+      <span class="{{ 'text-accent' if (last.auto_resumes or 0) > 0 else '' }}">{{ last.auto_resumes or 0 }} resumes</span>
+    </div>
+  {% endif %}
+
+  {% if s.last_error %}
+    <div class="text-[11px] text-error">{{ s.last_error }}</div>
+  {% endif %}
+
+</div>

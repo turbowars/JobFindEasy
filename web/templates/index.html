@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}JobFindEasy{% endblock %}
+{% block body %}
+
+<!-- ───────── SIDEBAR ───────── -->
+<aside class="pane sidebar pr-3 border-r border-base-300/60 text-sm space-y-3">
+
+  <div class="mb-2">
+    <div class="text-base font-semibold tracking-tight">JobFindEasy</div>
+    <div class="text-[10px] uppercase tracking-[0.12em] text-ink-3">FastAPI · HTMX · AG Grid · Shoelace</div>
+  </div>
+
+  <!-- Status badges (poll 5s) -->
+  <div id="badges"
+       hx-get="/partials/badges"
+       hx-trigger="load, every 5s"
+       hx-swap="innerHTML">
+    <sl-skeleton effect="pulse" style="height:48px"></sl-skeleton>
+  </div>
+
+  <!-- Generations tray (poll 2s) -->
+  <details open>
+    <summary class="text-[11px] uppercase tracking-[0.12em] text-ink-3 cursor-pointer select-none py-1">Generations</summary>
+    <div id="generations"
+         class="mt-1.5"
+         hx-get="/partials/generations"
+         hx-trigger="load, every 2s"
+         hx-swap="innerHTML">
+      <sl-skeleton effect="pulse" style="height:24px"></sl-skeleton>
+    </div>
+  </details>
+
+  <!-- Auto-scrape (poll 5s) -->
+  <details>
+    <summary class="text-[11px] uppercase tracking-[0.12em] text-ink-3 cursor-pointer select-none py-1">Auto-scrape</summary>
+    <div id="autoscrape"
+         class="mt-1.5"
+         hx-get="/partials/autoscrape"
+         hx-trigger="load, every 5s"
+         hx-swap="innerHTML">
+      <sl-skeleton effect="pulse" style="height:24px"></sl-skeleton>
+    </div>
+  </details>
+
+  <!-- Bulk gen — primary action -->
+  <sl-button variant="primary"
+             size="small"
+             style="width:100%;"
+             hx-post="/actions/bulk-generate"
+             hx-swap="none">
+    Generate missing strong-fit resumes
+  </sl-button>
+
+  <div class="text-[10px] text-ink-3 leading-relaxed pt-2 border-t border-base-300/40">
+    <kbd>j</kbd> <kbd>k</kbd> nav
+    &nbsp;·&nbsp; <kbd>a</kbd> apply
+    &nbsp;·&nbsp; <kbd>g</kbd> gen
+    &nbsp;·&nbsp; <kbd>/</kbd> search
+  </div>
+
+  <div class="text-[10px] text-ink-3 leading-relaxed pt-1">
+    All filtering is in the column headers above the table — click the funnel
+    icon on any column.
+  </div>
+
+</aside>
+
+<!-- ───────── TABLE PANE ───────── -->
+<section class="pane main-pane pr-2 flex flex-col">
+
+  <!-- Toolbar -->
+  <div class="flex items-center gap-3 mb-2 flex-shrink-0">
+    <sl-input data-grid-search
+              data-search
+              size="small"
+              placeholder="Search title, company, location…"
+              clearable
+              style="flex:1; max-width:28rem;">
+      <span slot="prefix" class="text-ink-3 text-sm leading-none">⌕</span>
+    </sl-input>
+    <sl-checkbox name="show_rejects" size="small">
+      <span class="text-xs">Show rejects</span>
+    </sl-checkbox>
+    <span id="grid-count" class="text-[11px] text-ink-3 ml-auto tabular-nums whitespace-nowrap">…</span>
+  </div>
+
+  <!-- AG Grid -->
+  <div id="jia-grid" class="ag-theme-quartz-dark jia-grid flex-1"></div>
+
+</section>
+
+<!-- ───────── DETAIL PANE ───────── -->
+<aside class="pane detail-pane pl-3 border-l border-base-300/60 relative">
+  <div id="detail">
+    <div class="empty-state h-full flex flex-col items-center justify-center text-center px-4 py-16 text-ink-3">
+      <div class="text-2xl mb-4 opacity-40">◇</div>
+      <h3 class="text-sm font-semibold text-ink mb-1">No job selected</h3>
+      <p class="text-xs">Click a row, or press <kbd>j</kbd>/<kbd>k</kbd></p>
+    </div>
+  </div>
+</aside>
+
+<!-- AG Grid init -->
+<script src="/static/grid.js" defer></script>
+
+{% endblock %}

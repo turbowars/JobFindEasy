@@ -1,0 +1,133 @@
+{# Table partial — swapped into #table-region on filter change or pagination.
+
+   3-color discipline:
+     - All meta (source, posted, location) is muted (ink-3)
+     - Score progress bar fills with accent ONLY when score >= 80
+     - Tier label rendered as plain dim text for non-strong; accent for strong
+     - Selected row gets accent left border (the only "selected" signal)
+     - Applied checkbox uses accent
+#}
+
+<div class="flex items-center justify-between text-[11px] text-ink-3 mb-2">
+  <span class="tracking-wide">{{ total }} match{{ '' if total == 1 else 'es' }} · page {{ page }} / {{ pages }}</span>
+  <div class="join">
+    {% if page > 1 %}
+      <button class="btn btn-xs btn-ghost join-item normal-case font-normal"
+              hx-get="/partials/table"
+              hx-include="#filter-form"
+              hx-vals='{"page": {{ page - 1 }}}'
+              hx-target="#table-region">prev</button>
+    {% else %}
+      <button class="btn btn-xs btn-ghost join-item btn-disabled normal-case font-normal" disabled>prev</button>
+    {% endif %}
+    {% if page < pages %}
+      <button class="btn btn-xs btn-ghost join-item normal-case font-normal"
+              hx-get="/partials/table"
+              hx-include="#filter-form"
+              hx-vals='{"page": {{ page + 1 }}}'
+              hx-target="#table-region">next</button>
+    {% else %}
+      <button class="btn btn-xs btn-ghost join-item btn-disabled normal-case font-normal" disabled>next</button>
+    {% endif %}
+  </div>
+</div>
+
+{% if not rows %}
+  <div class="rounded-md border border-base-300/40 py-12 text-center">
+    <div class="text-ink-2 text-sm">No matches</div>
+    <div class="text-ink-3 text-xs mt-1">Try widening the filters in the sidebar.</div>
+  </div>
+{% else %}
+
+<div class="overflow-x-auto rounded-md border border-base-300/40">
+<table class="table table-sm">
+  <thead class="text-[10px] uppercase tracking-[0.1em] text-ink-3 border-b border-base-300/40">
+    <tr>
+      <th class="w-6"></th>
+      <th class="w-28">Score</th>
+      <th>Title</th>
+      <th class="w-44">Company</th>
+      <th class="w-44">Location</th>
+      <th class="w-20">Posted</th>
+      <th class="w-20">Source</th>
+      <th class="w-12 text-center">Applied</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+      {% set score = (r.score_total or 0) | int %}
+      {% set tier = (r.tier or '') %}
+      {% set is_strong = score >= 80 %}
+      {# Opacity-based hierarchy: strong fits at 100%, possible 75%, stretch 55%, skip/unscored 38% #}
+      {% if score >= 80 %}{% set row_opacity = 'opacity-100' %}
+      {% elif score >= 60 %}{% set row_opacity = 'opacity-80' %}
+      {% elif score >= 40 %}{% set row_opacity = 'opacity-60' %}
+      {% else %}{% set row_opacity = 'opacity-50' %}{% endif %}
+
+      <tr class="row {{ row_opacity }} hover:opacity-100 transition-opacity"
+          data-job-hash="{{ r.hash }}"
+          hx-get="/partials/detail/{{ r.hash }}"
+          hx-target="#detail"
+          hx-swap="innerHTML"
+          hx-on:click="document.querySelectorAll('tr.row.selected').forEach(x=>x.classList.remove('selected')); this.classList.add('selected');">
+
+        <td onclick="event.stopPropagation()" class="text-center">
+          {% if r.url %}
+            <a href="{{ r.url }}" target="_blank" rel="noopener" class="text-ink-3 hover:text-accent text-xs" title="Open posting">↗</a>
+          {% endif %}
+        </td>
+
+        <td>
+          <div class="flex items-center gap-2">
+            <span class="font-semibold text-sm tabular-nums w-7 {{ 'text-accent' if is_strong else '' }}">{{ score if r.score_total is not none else '—' }}</span>
+            <div class="w-12 h-1 rounded-full bg-base-300/40 overflow-hidden">
+              <div class="h-full {{ 'bg-accent' if is_strong else 'bg-ink-3' }}"
+                   style="width:{{ score }}%; opacity: {{ '1' if is_strong else '0.5' }};"></div>
+            </div>
+          </div>
+        </td>
+
+        <td class="jia-copyable max-w-[420px] truncate" title="{{ r.title }}">
+          {{ r.title }}
+          <button class="copy-btn btn btn-ghost btn-xs h-5 min-h-0 px-1 text-ink-3"
+                  data-copy="{{ r.title|e }}"
+                  onclick="event.stopPropagation()"
+                  title="Copy title">⎘</button>
+        </td>
+
+        <td class="jia-copyable max-w-[180px] truncate font-medium" title="{{ r.company }}">
+          {{ r.company }}
+          <button class="copy-btn btn btn-ghost btn-xs h-5 min-h-0 px-1 text-ink-3"
+                  data-copy="{{ r.company|e }}"
+                  onclick="event.stopPropagation()"
+                  title="Copy company">⎘</button>
+        </td>
+
+        <td class="max-w-[180px] truncate text-xs text-ink-3" title="{{ r.location or '' }}">
+          {{ r.location or '' }}
+        </td>
+
+        <td class="text-[11px] text-ink-3 tabular-nums">
+          {{ (r.posted_at or '')[:10] }}
+        </td>
+
+        <td class="text-[11px] text-ink-3">
+          {{ r.source }}
+        </td>
+
+        <td onclick="event.stopPropagation()" class="text-center">
+          <input type="checkbox"
+                 class="checkbox checkbox-xs checkbox-success"
+                 {{ 'checked' if r.applied else '' }}
+                 hx-post="/actions/applied/{{ r.hash }}"
+                 hx-vals='js:{"applied": event.target.checked ? "on" : "off"}'
+                 hx-trigger="change"
+                 hx-swap="none">
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% endif %}

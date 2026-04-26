@@ -1,0 +1,123 @@
+{# Artifacts block — auto-polled every 2.5s. Resume + cover preview + scores. #}
+
+{% if not (resume_path or cover_path or pending_resume or pending_cover) %}
+{% else %}
+
+<div class="text-[10px] uppercase tracking-[0.1em] text-ink-3 mt-3 mb-2 border-t border-base-300/40 pt-3">Generated artifacts</div>
+
+{# ───── Resume ───── #}
+{% if resume_path %}
+  {% set ats = (scores or {}).get('ats_match') or {} %}
+  {% set hr  = (scores or {}).get('hr') or {} %}
+  {% set ats_pct = ats.get('match_pct', 0) | int %}
+  {% set hr_pct  = hr.get('hr_score', 0) | int %}
+  {% set ats_strong = ats_pct >= 80 %}
+  {% set hr_strong  = hr_pct  >= 80 %}
+
+  <details class="border-l-2 border-accent/60 pl-3 py-1 mb-3" open>
+    <summary class="text-sm font-medium cursor-pointer select-none">
+      Resume
+      <span class="text-[11px] text-ink-3 font-normal ml-1">{{ fmt_size(resume_path) }} · {{ fmt_age(resume_path) }}</span>
+    </summary>
+    <div class="space-y-3 mt-2">
+
+      <div class="flex flex-wrap gap-2">
+        <sl-button variant="primary" size="small" href="/files/resume/{{ job.hash }}">Download .docx</sl-button>
+        <sl-button variant="text" size="small"
+                   hx-post="/actions/regenerate/resume/{{ job.hash }}"
+                   hx-swap="none">Regenerate</sl-button>
+      </div>
+
+      {% if resume_html %}
+        <div class="rounded border border-base-300/40 bg-base-200/20">
+          <div class="jia-prose p-3 text-xs leading-relaxed max-h-[500px] overflow-y-auto text-ink-2">
+            {{ resume_html | safe }}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if scores %}
+        <div class="grid grid-cols-2 gap-4">
+          <div class="text-center">
+            <div class="text-[9px] uppercase tracking-[0.1em] text-ink-3 mb-1">ATS keyword match</div>
+            <sl-progress-ring value="{{ ats_pct }}" class="{{ '' if ats_strong else 'dim' }}"
+                              style="--size:56px; font-size:0.95rem;">
+              <span class="font-bold {{ 'text-accent' if ats_strong else 'text-ink-3' }}">{{ ats_pct }}</span>
+            </sl-progress-ring>
+            {% set missing = ats.get('missing') or {} %}
+            {% set flat_missing = (missing.get('required') or []) + (missing.get('preferred') or []) + (missing.get('soft') or []) %}
+            {% if flat_missing %}
+              <div class="text-[10px] uppercase tracking-[0.1em] text-ink-3 mt-2">Missing</div>
+              <div class="flex flex-wrap gap-1 justify-center mt-1">
+                {% for k in flat_missing %}<sl-tag size="small">{{ k }}</sl-tag>{% endfor %}
+              </div>
+            {% else %}
+              <div class="text-[10px] text-accent mt-2">All keywords covered</div>
+            {% endif %}
+          </div>
+          <div class="text-center">
+            <div class="text-[9px] uppercase tracking-[0.1em] text-ink-3 mb-1">HR perspective</div>
+            <sl-progress-ring value="{{ hr_pct }}" class="{{ '' if hr_strong else 'dim' }}"
+                              style="--size:56px; font-size:0.95rem;">
+              <span class="font-bold {{ 'text-accent' if hr_strong else 'text-ink-3' }}">{{ hr_pct }}</span>
+            </sl-progress-ring>
+            {% if hr.get('rationale') %}
+              <div class="text-[11px] text-ink-2 mt-2 px-1 leading-snug text-left">{{ hr.rationale }}</div>
+            {% endif %}
+            {% if hr.get('weakest_areas') %}
+              <div class="text-[10px] uppercase tracking-[0.1em] text-ink-3 mt-2 text-left">Weakest areas</div>
+              <ul class="text-[11px] list-disc list-inside text-left text-ink-2 mt-0.5">
+                {% for a in hr.weakest_areas %}<li>{{ a }}</li>{% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+        </div>
+        {% if scores.get('retried') %}
+          <div class="text-[10px] text-ink-3 text-center">Auto-retried once due to low initial scores.</div>
+        {% endif %}
+      {% endif %}
+    </div>
+  </details>
+{% elif pending_resume %}
+  <div class="border-l-2 border-accent pl-3 py-2 mb-3">
+    <div class="flex items-center gap-2">
+      <sl-spinner style="font-size:0.85rem;"></sl-spinner>
+      <span class="text-sm text-ink">Generating resume…</span>
+    </div>
+    <div class="text-[11px] text-ink-3 mt-0.5">Updates automatically when ready.</div>
+  </div>
+{% endif %}
+
+{# ───── Cover letter ───── #}
+{% if cover_path %}
+  <details class="border-l-2 border-base-300/40 pl-3 py-1 mb-3">
+    <summary class="text-sm font-medium cursor-pointer select-none">
+      Cover letter
+      <span class="text-[11px] text-ink-3 font-normal ml-1">{{ fmt_size(cover_path) }} · {{ fmt_age(cover_path) }}</span>
+    </summary>
+    <div class="space-y-3 mt-2">
+      <div class="flex flex-wrap gap-2">
+        <sl-button variant="primary" size="small" href="/files/cover/{{ job.hash }}">Download .docx</sl-button>
+        <sl-button variant="text" size="small"
+                   hx-post="/actions/regenerate/cover/{{ job.hash }}"
+                   hx-swap="none">Regenerate</sl-button>
+      </div>
+      {% if cover_html %}
+        <div class="rounded border border-base-300/40 bg-base-200/20">
+          <div class="jia-prose p-3 text-xs leading-relaxed max-h-[500px] overflow-y-auto text-ink-2">
+            {{ cover_html | safe }}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </details>
+{% elif pending_cover %}
+  <div class="border-l-2 border-accent pl-3 py-2 mb-3">
+    <div class="flex items-center gap-2">
+      <sl-spinner style="font-size:0.85rem;"></sl-spinner>
+      <span class="text-sm text-ink">Generating cover letter…</span>
+    </div>
+  </div>
+{% endif %}
+
+{% endif %}

@@ -1,0 +1,154 @@
+{# Detail panel — swapped into #detail when a row is clicked. #}
+
+{% set tier = (job.tier or '') %}
+{% set tier_emoji, tier_label = TIER_MAP.get(tier, ('', 'unscored')) %}
+{% set score = job.score_total %}
+{% set score_int = (score or 0) | int %}
+{% set is_strong = score_int >= 80 %}
+
+<article class="px-1 py-2 space-y-3 relative">
+
+  <sl-icon-button name="x-lg"
+                  label="Close"
+                  class="absolute top-1 right-1 z-10"
+                  style="font-size:1rem;"
+                  onclick="window.jia_closeDetail && window.jia_closeDetail()"></sl-icon-button>
+
+  <!-- Header -->
+  <div class="pr-8">
+    <div class="flex items-start gap-4">
+      <div class="flex-1 min-w-0">
+        <h2 class="text-base font-semibold leading-tight text-ink">{{ job.title }}</h2>
+        <div class="text-[13px] text-ink-2 mt-1 leading-snug">
+          <span class="font-medium text-ink">{{ job.company }}</span>
+          {% if job.location %}<span class="text-ink-3"> · {{ job.location }}</span>{% endif %}
+          <span class="text-ink-3"> · {{ job.source }}</span>
+          {% if job.posted_at %}<span class="text-ink-3"> · {{ job.posted_at[:10] }}</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="flex-shrink-0 text-center">
+        <sl-progress-ring value="{{ score_int }}" class="{{ '' if is_strong else 'dim' }}"
+                          style="--size:64px; font-size:1rem;">
+          <span class="font-bold {{ 'text-accent' if is_strong else 'text-ink-3' }}">
+            {{ score_int if score is not none else '—' }}
+          </span>
+        </sl-progress-ring>
+        <div class="mt-1 text-[10px] uppercase tracking-[0.1em] {{ 'text-accent' if is_strong else 'text-ink-3' }}">
+          {{ tier_label }}
+        </div>
+      </div>
+    </div>
+
+    {% if job.sponsorship_status == 'denied' or (job.salary_min and job.salary_max) or job.remote or job.sponsorship_status == 'offered' %}
+      <div class="flex flex-wrap gap-1.5 mt-3">
+        {% if job.sponsorship_status == 'denied' %}
+          <sl-tag variant="danger" size="small">No sponsorship</sl-tag>
+        {% elif job.sponsorship_status == 'offered' %}
+          <sl-tag size="small">Sponsorship offered</sl-tag>
+        {% endif %}
+        {% if job.salary_min and job.salary_max %}
+          <sl-tag size="small">${{ '{:,}'.format(job.salary_min) }} – ${{ '{:,}'.format(job.salary_max) }}</sl-tag>
+        {% endif %}
+        {% if job.remote %}<sl-tag size="small">Remote</sl-tag>{% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Top action bar -->
+  <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-base-300/40">
+    <sl-switch size="small"
+               data-applied-toggle
+               {{ 'checked' if job.applied else '' }}
+               hx-post="/actions/applied/{{ job.hash }}"
+               hx-trigger="sl-change"
+               hx-vals='js:{"applied": event.target.checked ? "on" : "off"}'
+               hx-swap="none">
+      <span class="text-xs font-medium">Applied</span>
+    </sl-switch>
+
+    {% if job.url %}
+      <sl-button variant="primary" size="small" href="{{ job.url }}" target="_blank" rel="noopener">
+        Open posting ↗
+      </sl-button>
+    {% endif %}
+
+    <sl-button size="small"
+               data-action="generate-resume"
+               hx-post="/actions/generate/resume/{{ job.hash }}"
+               hx-swap="none">
+      Generate resume
+    </sl-button>
+
+    <sl-button variant="text" size="small"
+               hx-post="/actions/generate/cover/{{ job.hash }}"
+               hx-swap="none">
+      Cover letter
+    </sl-button>
+  </div>
+
+  {# Quick copy strip #}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-1">
+    <code class="block bg-base-200/40 rounded px-2 py-1.5 text-[11px] text-ink-2 cursor-pointer hover:bg-base-200/80 hover:text-ink truncate"
+          data-copy="{{ job.title|e }}" title="Click to copy">{{ job.title }}</code>
+    <code class="block bg-base-200/40 rounded px-2 py-1.5 text-[11px] text-ink-2 cursor-pointer hover:bg-base-200/80 hover:text-ink truncate"
+          data-copy="{{ job.company|e }}" title="Click to copy">{{ job.company }}</code>
+    {% if job.url %}
+    <code class="block bg-base-200/40 rounded px-2 py-1.5 text-[11px] text-ink-2 cursor-pointer hover:bg-base-200/80 hover:text-ink truncate md:col-span-2"
+          data-copy="{{ job.url|e }}" title="Click to copy">{{ job.url }}</code>
+    {% endif %}
+    <code class="block bg-base-200/40 rounded px-2 py-1.5 text-[11px] text-ink-2 cursor-pointer hover:bg-base-200/80 hover:text-ink truncate md:col-span-2"
+          data-copy="{{ job.title|e }} at {{ job.company|e }}" title="Click to copy">{{ job.title }} at {{ job.company }}</code>
+  </div>
+
+  {% if job.score_rationale %}
+    <p class="text-[12px] text-ink-2 leading-relaxed border-l-2 border-accent/60 pl-3">
+      {{ job.score_rationale }}
+    </p>
+  {% endif %}
+
+  {% if job._score_breakdown %}
+    {% set bd = job._score_breakdown %}
+    <div class="grid grid-cols-3 md:grid-cols-6 gap-1.5">
+      {% for label, val, max in [('Title', bd.title_match, 30), ('Skills', bd.skills_match, 25), ('Scope', bd.leadership_scope, 15), ('Domain', bd.domain_alignment, 10), ('Loc/Visa', bd.location_fit, 10), ('Comp', bd.comp_confidence, 10)] %}
+        {% set ratio = (val / max) %}
+        <div class="rounded p-1.5 bg-base-200/30 text-center">
+          <div class="text-[9px] uppercase tracking-[0.08em] text-ink-3">{{ label }}</div>
+          <div class="text-sm font-semibold tabular-nums {{ 'text-accent' if ratio >= 0.8 else 'text-ink' }}">
+            {{ val }}<span class="text-ink-3 text-[10px] font-normal">/{{ max }}</span>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <!-- Notes -->
+  <details>
+    <summary class="text-[11px] uppercase tracking-[0.1em] text-ink-3 cursor-pointer select-none py-1 hover:text-ink-2">Notes</summary>
+    <sl-textarea size="small"
+                 rows="3"
+                 placeholder="Why this role, prep notes, recruiter contact…"
+                 value="{{ job.notes or '' }}"
+                 resize="vertical"
+                 class="mt-1"
+                 hx-post="/actions/notes/{{ job.hash }}"
+                 hx-trigger="sl-change"
+                 hx-vals='js:{"notes": event.target.value}'
+                 hx-swap="none"></sl-textarea>
+  </details>
+
+  <!-- JD -->
+  <details>
+    <summary class="text-[11px] uppercase tracking-[0.1em] text-ink-3 cursor-pointer select-none py-1 hover:text-ink-2">Job description</summary>
+    <pre class="whitespace-pre-wrap font-sans text-xs leading-relaxed max-h-[400px] overflow-auto p-3 mt-1 bg-base-200/30 rounded text-ink-2">{{ job._clean_description }}</pre>
+  </details>
+
+  <!-- Auto-refreshing artifacts (preview + scores) -->
+  <div id="artifacts-{{ job.hash }}"
+       hx-get="/partials/artifacts/{{ job.hash }}"
+       hx-trigger="load, every 2.5s"
+       hx-swap="innerHTML">
+    <sl-skeleton effect="pulse" style="height:32px"></sl-skeleton>
+  </div>
+
+</article>

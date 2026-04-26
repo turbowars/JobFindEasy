@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" class="sl-theme-dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}JobFindEasy{% endblock %}</title>
+
+  <!-- Tailwind utilities (Play CDN).
+       NOTE: NO ?plugins=forms — that plugin's [type='text'] reset matched
+       <sl-input>'s reflected `type="text"` host attribute and painted a
+       white background around the whole web component. We don't use any
+       form-plugin classes anyway; Shoelace + .jia-input handle everything. -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    /* 3-color palette (dark): bg, text, single accent.
+       error stays as a tiny red exception ONLY for genuine failure states. */
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            accent:    "#10b981",
+            ink:       "#e8e8e8",
+            "ink-2":   "rgba(232, 232, 232, 0.62)",
+            "ink-3":   "rgba(232, 232, 232, 0.38)",
+            surface:   "#0d0d0e",
+            "surface-1": "#161618",
+            "surface-2": "#26262a",
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Shoelace — dark theme + autoloader (lazy-loads components on use) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.18.0/cdn/themes/dark.css">
+  <script type="module"
+          src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.18.0/cdn/shoelace-autoloader.js"></script>
+
+  <!-- AG Grid Community -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.4/styles/ag-grid.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.4/styles/ag-theme-quartz.css">
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.4/dist/ag-grid-community.min.js"></script>
+
+  <!-- Layout grid + minor overrides (versioned to defeat aggressive caching) -->
+  <link rel="stylesheet" href="/static/app.css?v=5">
+
+  <!-- HTMX -->
+  <script src="https://unpkg.com/htmx.org@2.0.4"
+          integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
+          crossorigin="anonymous"></script>
+</head>
+<body class="bg-surface text-ink antialiased">
+  <main class="jia-app">
+    {% block body %}{% endblock %}
+  </main>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
