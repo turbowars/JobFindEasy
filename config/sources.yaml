@@ -12,6 +12,11 @@
 defaults:
   concurrency: 10
   request_timeout_seconds: 30
+  # Skip a source on a subsequent run if its last successful scrape is within
+  # this many minutes. Set to 0 to disable skipping (always re-fetch).
+  # Each ATS slug (e.g. greenhouse:airbnb) and each endpoint (e.g. remotive)
+  # is tracked independently — a partial run picks up where it left off.
+  skip_if_scraped_within_minutes: 15
 
 # === ATS-direct (highest signal, full JD, public APIs) ===========================
 

@@ -18,3 +18,23 @@ Job Intel: 11 strong fits today
   - Senior Manager, Platform Engineering - Secure Supply Chain at Twilio (89)
   - + 8 more in dashboard
 ===== run finished 2026-04-26T03:29:46-05:00 =====
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sarasvati/repos/JobFindEasy/.venv/lib/python3.13/site-packages/click/core.py", line 853, in invoke
+    return callback(*args, **kwargs)
+  File "/Users/sarasvati/repos/JobFindEasy/src/cli.py", line 84, in score
+    pending = db.get_unscored_passed()[:limit]
+              ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/sarasvati/repos/JobFindEasy/src/db.py", line 168, in get_unscored_passed
+    cur = c.execute(
+        """
+    ...<6 lines>...
+        (SCORE_FAIL_DEAD_LETTER_THRESHOLD,),
+    )
+sqlite3.OperationalError: no such column: score_fail_count
+
+Job Intel: 10 strong fits today
+  - Engineering Manager, Identity Frontend at Coinbase (96)
+  - Engineering Manager, UI Tooling at Airbnb (92)
+  - Senior Manager, Platform Engineering - Secure Supply Chain at Twilio (89)
+  - + 7 more in dashboard
+===== run finished 2026-04-26T08:00:13-05:00 =====

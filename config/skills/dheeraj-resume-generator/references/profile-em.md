@@ -20,8 +20,10 @@ Never alter companies, titles, dates, or metrics. These are locked.
 
 ## Default Headline (override per JD using Step 1 of SKILL.md)
 
+EM headlines are exactly ONE slot — the JD's target title verbatim, with no pipe separators and no alternates. Example default if no JD is provided:
+
 ```
-Engineering Manager  |  Frontend Engineering Manager  |  Tech Lead, Frontend Platform
+Engineering Manager
 ```
 
 ---
@@ -86,7 +88,7 @@ Engineering manager with 15+ years delivering scalable, user-centric platforms a
 - Reduced sprint carryover 35 to 40% and cut late-stage rework ~50%
 - Architected frontend auth layer for Bose (Okta-integrated login, signup, password reset, session management)
 
-### NowFloats Technologies Ltd. · Principal Engineer · Hyderabad, India · Mar 2017 – Feb 2018
+### nowfloats · Principal Engineer · Hyderabad, India · Mar 2017 – Feb 2018
 
 - Led a 12-member UX/UI engineering team delivering web applications serving 10M+ SMB merchants
 - Set the hiring bar, technical interview loop, and onboarding playbook; grew team from 5 to 12 without regressing velocity

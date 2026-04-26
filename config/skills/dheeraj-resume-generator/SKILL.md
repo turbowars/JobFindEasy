@@ -21,6 +21,26 @@ These apply to the `.docx` Dheeraj will send. They do NOT apply to this skill fi
 
 ---
 
+## Mandatory Output Rules (HARD, apply to every artifact)
+
+These rules supersede any conflicting instruction in later sections.
+
+1. **No track tags in visible output.** Never write `(IC)` or `(EM)` anywhere in the generated resume — not in the headline, summary, role title, bullet, skill, or anywhere else. Track is internal scaffolding only.
+
+2. **EM headline = ONE slot.** When generating an EM-track resume, the headline contains exactly one role title (the JD's target title, verbatim) — no pipe separators, no alternates. IC track keeps the 3-slot format.
+
+3. **Mirror title hygiene.** A mirror role title (the parenthetical at Equifax, or any role's emitted title) MUST NOT contain the target company's name or a team/product name unique to the target company. Example WRONG: applying to Coinbase for "Engineering Manager, Legend" → DO NOT emit "Engineering Manager, Legend" at Equifax (Legend is Coinbase's NFT product). RIGHT: emit "Engineering Manager" or "Engineering Manager, Frontend Platform" — keep only generic scope qualifiers that describe transferable responsibility.
+
+4. **Canonical company names.** When listing Dheeraj's previous roles, always use these exact spellings — never include legal-entity suffixes or alternate forms:
+   - `nowfloats` (lowercase, no "Technologies", no "Ltd.")
+   - `Equifax`
+   - `Midigator`
+   - `TA Digital`
+   - `Deloitte Digital Studio`
+   - `Neudesic`
+
+---
+
 ## Required Inputs
 
 Before generating, confirm:
@@ -129,18 +149,20 @@ Dheeraj's Equifax line literally reads "Tech Lead, Frontend Platform." This is h
 
 ### EM Track
 
-When the JD has a domain suffix, mirror it literally in slot 1 (comma, capitalization, all of it).
+**EM headlines are exactly ONE slot.** Use the JD's target title verbatim, with no pipe separators, no alternates, no parentheticals. Strip out any embedded target-company name first (see "Mirror title hygiene" below).
 
 | JD target | Headline |
 |---|---|
-| Engineering Manager | `Engineering Manager  \|  Frontend Engineering Manager  \|  Tech Lead, Frontend Platform` |
-| Software Engineering Manager | `Software Engineering Manager  \|  Engineering Manager  \|  Frontend Platform Tech Lead` |
-| Frontend Engineering Manager | `Frontend Engineering Manager  \|  Engineering Manager, Frontend Platform  \|  Tech Lead, Frontend Platform` |
-| Full Stack Engineering Manager | `Full Stack Engineering Manager  \|  Engineering Manager  \|  Tech Lead, Product Engineering` |
-| Product Engineering Manager | `Product Engineering Manager  \|  Engineering Manager, Product  \|  Tech Lead, Product Engineering` |
-| Web Platform Engineering Manager | `Web Platform Engineering Manager  \|  Engineering Manager, Frontend Platform  \|  Frontend Platform Tech Lead` |
-| Growth Engineering Manager | `Growth Engineering Manager  \|  Engineering Manager, Growth  \|  Product Engineering Tech Lead` |
-| Director of Engineering | `Director of Engineering  \|  Engineering Manager  \|  Frontend Platform Lead` |
+| Engineering Manager | `Engineering Manager` |
+| Software Engineering Manager | `Software Engineering Manager` |
+| Frontend Engineering Manager | `Frontend Engineering Manager` |
+| Full Stack Engineering Manager | `Full Stack Engineering Manager` |
+| Product Engineering Manager | `Product Engineering Manager` |
+| Web Platform Engineering Manager | `Web Platform Engineering Manager` |
+| Growth Engineering Manager | `Growth Engineering Manager` |
+| Director of Engineering | `Director of Engineering` |
+| Engineering Manager, Identity Frontend | `Engineering Manager, Identity Frontend` *(generic scope qualifier OK)* |
+| Engineering Manager, Legend (Coinbase team name) | `Engineering Manager` *(strip target-company team/product name)* |
 
 ### Pitfalls (do NOT do these)
 

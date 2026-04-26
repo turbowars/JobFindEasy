@@ -24,7 +24,16 @@ load_dotenv(ROOT / ".env")
 import os
 
 from src import db
-from src.generate.resume import generate_resume, autogen_resume_if_missing, expected_resume_path
+from src.generate.resume import (
+    generate_resume,
+    autogen_resume_if_missing,
+    expected_resume_path,
+    existing_resume_path,
+)
+from src.scrapers.base import BaseScraper
+from src.generate.cover_letter import expected_cover_letter_path
+
+import mammoth
 from src.generate.cover_letter import generate_cover_letter
 from src.scrapers.runner import run_all_sync
 from src.enrichment.prefilter import prefilter as run_prefilter
@@ -82,9 +91,336 @@ def score_label(score):
     return str(int(score))
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=180, show_spinner=False)
 def load_jobs() -> pd.DataFrame:
+    """Cached snapshot of the jobs DataFrame.
+
+    TTL is 3 minutes — autoscrape cycles run no faster than every 15 min by
+    default, so a 3-minute window of slightly stale UI data is a worthwhile
+    trade for near-instant reruns. All write paths (set_applied, set_notes,
+    pipeline runs) explicitly call `st.cache_data.clear()` to invalidate.
+    """
     return db.to_dataframe()
+
+
+@st.cache_data(show_spinner=False)
+def docx_to_html(path_str: str, mtime: float) -> str:
+    """Convert a .docx to HTML for inline preview. mtime is in the cache key
+    so the preview updates when the file is regenerated."""
+    with open(path_str, "rb") as f:
+        result = mammoth.convert_to_html(f)
+    return result.value
+
+
+@st.cache_data(show_spinner=False, max_entries=512)
+def clean_jd_text(html_or_text: str) -> str:
+    """Strip HTML tags and decode common entities from a job description.
+
+    Most scrapers (Greenhouse, Lever, Coinbase) store the JD body as raw HTML.
+    Rendering that with `st.text` shows the literal `<div><p>...</p></div>`
+    markup. We reuse `BaseScraper.clean_html` which already handles tag
+    stripping + paragraph-aware newline insertion + entity decoding.
+    """
+    if not html_or_text:
+        return ""
+    return BaseScraper.clean_html(html_or_text)
+
+
+def _safe_docx_html(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    try:
+        return docx_to_html(str(path), path.stat().st_mtime)
+    except Exception as e:
+        return f"<em>Preview failed: {e}</em>"
+
+
+@st.cache_data(show_spinner=False)
+def _scores_sidecar_cached(sidecar_path_str: str, mtime: float) -> dict | None:
+    """Memoize the sidecar read keyed on (path, mtime). Avoids re-reading from
+    disk on every fragment tick. Cache invalidates automatically when the file
+    is regenerated (mtime bump → new cache key)."""
+    p = Path(sidecar_path_str)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return None
+
+
+def _load_scores_sidecar(docx_path: Path) -> dict | None:
+    sidecar = docx_path.with_suffix(".scores.json")
+    if not sidecar.exists():
+        return None
+    return _scores_sidecar_cached(str(sidecar), sidecar.stat().st_mtime)
+
+
+# ---------------------------------------------------------------------------
+# Process-level pending markers + generations log
+#
+# These live OUTSIDE st.session_state so they survive browser refreshes and
+# are shared across browser tabs. The actual generation work is already
+# process-scoped (ThreadPoolExecutor in get_executor); these mirrors are just
+# the UI-visible status of those jobs. The Streamlit Python process itself is
+# the source of truth — when it restarts, the markers/log reset, but any
+# files already written to disk persist and are auto-rediscovered.
+# ---------------------------------------------------------------------------
+_PENDING_MARKERS: dict[tuple[str, str], float] = {}
+_PENDING_LOCK = threading.Lock()
+
+
+def _mark_pending(job_hash: str, kind: str) -> None:
+    """Track in-flight generation for a job so the auto-refreshing fragment
+    can render a progress indicator. `kind` is "resume" or "cover"."""
+    with _PENDING_LOCK:
+        _PENDING_MARKERS[(job_hash, kind)] = time.time()
+
+
+def _clear_pending(job_hash: str, kind: str) -> None:
+    with _PENDING_LOCK:
+        _PENDING_MARKERS.pop((job_hash, kind), None)
+
+
+def _pending_started_at(job_hash: str, kind: str) -> float | None:
+    with _PENDING_LOCK:
+        return _PENDING_MARKERS.get((job_hash, kind))
+
+
+def _fmt_file_age(path: Path) -> str:
+    if not path.exists():
+        return ""
+    age = int(time.time() - path.stat().st_mtime)
+    if age < 60:
+        return f"{age}s ago"
+    if age < 3600:
+        return f"{age // 60}m ago"
+    if age < 86400:
+        return f"{age // 3600}h ago"
+    return f"{age // 86400}d ago"
+
+
+def _fmt_size(path: Path) -> str:
+    if not path.exists():
+        return ""
+    n = path.stat().st_size
+    if n < 1024:
+        return f"{n} B"
+    if n < 1024 * 1024:
+        return f"{n / 1024:.0f} KB"
+    return f"{n / (1024 * 1024):.1f} MB"
+
+
+def _render_inflight_skeleton(label: str, started_at: float):
+    """Show a clean 'generating' indicator with elapsed time. Re-renders on
+    each fragment tick so the elapsed counter ticks live."""
+    elapsed = int(time.time() - started_at)
+    st.html(
+        f'<div style="border:1px dashed rgba(128,128,128,0.35);border-radius:8px;'
+        f'padding:18px 16px;background:rgba(128,128,128,0.04);">'
+        f'<div style="font-size:13px;font-weight:600;color:#888;'
+        f'letter-spacing:0.4px;">⏳ GENERATING {label.upper()}</div>'
+        f'<div style="font-size:11px;color:#888;margin-top:4px;">'
+        f'Running in background · {elapsed}s elapsed · '
+        f'this view will update automatically when the file is ready.'
+        f'</div></div>'
+    )
+
+
+@st.fragment(run_every=2.5)
+def _render_artifacts_fragment(
+    *,
+    job_hash: str,
+    job_title: str,
+    job_company: str,
+    job_location: str,
+    job_description: str,
+    resume_path_str: str,
+    cover_path_str: str,
+):
+    """Auto-refreshing block that polls every 2.5s for the generated artifacts.
+
+    Three states per artifact:
+      1. File exists      → render preview + scores + actions
+      2. Generation in flight → show skeleton with live elapsed counter
+      3. Neither           → render nothing (the Generate buttons above are the affordance)
+    """
+    resume_path = Path(resume_path_str)
+    cover_path = Path(cover_path_str)
+
+    # Auto-clear stale pending markers if the file has landed.
+    if resume_path.exists():
+        _clear_pending(job_hash, "resume")
+    if cover_path.exists():
+        _clear_pending(job_hash, "cover")
+
+    pending_resume = _pending_started_at(job_hash, "resume")
+    pending_cover = _pending_started_at(job_hash, "cover")
+
+    has_anything = (
+        resume_path.exists() or cover_path.exists()
+        or pending_resume is not None or pending_cover is not None
+    )
+    if not has_anything:
+        return
+
+    st.markdown("---")
+    st.markdown("#### 📄 Generated artifacts")
+
+    # ---- Resume ----
+    if resume_path.exists():
+        head = (
+            f"📄 Resume preview — `{resume_path.name}`  "
+            f"·  {_fmt_size(resume_path)}  ·  generated {_fmt_file_age(resume_path)}"
+        )
+        with st.expander(head, expanded=True):
+            # Toolbar: download + regenerate
+            t1, t2, _ = st.columns([0.32, 0.32, 0.36])
+            with t1:
+                with open(resume_path, "rb") as f:
+                    st.download_button(
+                        "⬇ Download .docx",
+                        f.read(),
+                        file_name=resume_path.name,
+                        key=f"dl_resume_inline_{job_hash}",
+                        use_container_width=True,
+                    )
+            with t2:
+                if st.button(
+                    "🔁 Regenerate",
+                    key=f"regen_resume_{job_hash}",
+                    use_container_width=True,
+                    help="Spin a fresh resume with the same JD. The new file replaces the current one.",
+                ):
+                    try:
+                        resume_path.unlink(missing_ok=True)
+                        resume_path.with_suffix(".scores.json").unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    submit_generation("resume", job_title, job_company, job_description)
+                    _mark_pending(job_hash, "resume")
+                    st.toast(f"📝 Regenerating resume for {job_company}...", icon="📝")
+                    st.rerun()
+
+            html = _safe_docx_html(resume_path)
+            if html:
+                st.html(
+                    f'<div style="max-height:500px;overflow:auto;padding:10px;'
+                    f'border:1px solid rgba(128,128,128,0.2);border-radius:8px;'
+                    f'background:rgba(255,255,255,0.02);">{html}</div>'
+                )
+            scores = _load_scores_sidecar(resume_path)
+            if scores:
+                _render_scores_panel(scores)
+    elif pending_resume is not None:
+        _render_inflight_skeleton("resume", pending_resume)
+
+    # ---- Cover letter ----
+    if cover_path.exists():
+        head = (
+            f"✉️ Cover letter preview — `{cover_path.name}`  "
+            f"·  {_fmt_size(cover_path)}  ·  generated {_fmt_file_age(cover_path)}"
+        )
+        with st.expander(head, expanded=False):
+            t1, t2, _ = st.columns([0.32, 0.32, 0.36])
+            with t1:
+                with open(cover_path, "rb") as f:
+                    st.download_button(
+                        "⬇ Download .docx",
+                        f.read(),
+                        file_name=cover_path.name,
+                        key=f"dl_cover_inline_{job_hash}",
+                        use_container_width=True,
+                    )
+            with t2:
+                if st.button(
+                    "🔁 Regenerate",
+                    key=f"regen_cover_{job_hash}",
+                    use_container_width=True,
+                ):
+                    try:
+                        cover_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    submit_generation("cover", job_title, job_company, job_description)
+                    _mark_pending(job_hash, "cover")
+                    st.toast(f"✉️ Regenerating cover letter for {job_company}...", icon="✉️")
+                    st.rerun()
+
+            html = _safe_docx_html(cover_path)
+            if html:
+                st.html(
+                    f'<div style="max-height:500px;overflow:auto;padding:10px;'
+                    f'border:1px solid rgba(128,128,128,0.2);border-radius:8px;'
+                    f'background:rgba(255,255,255,0.02);">{html}</div>'
+                )
+    elif pending_cover is not None:
+        _render_inflight_skeleton("cover letter", pending_cover)
+
+
+def _score_color(pct: int) -> str:
+    if pct >= 80:
+        return "#16a34a"  # green
+    if pct >= 60:
+        return "#d97706"  # amber
+    return "#dc2626"  # red
+
+
+def _render_score_circle(label: str, pct: int):
+    color = _score_color(int(pct or 0))
+    st.html(
+        f'<div style="text-align:center;">'
+        f'<div style="font-size:11px;color:#888;letter-spacing:0.5px;text-transform:uppercase;">{label}</div>'
+        f'<div style="display:inline-block;background:{color};color:white;'
+        f'width:72px;height:72px;border-radius:50%;line-height:72px;text-align:center;'
+        f'font-weight:700;font-size:24px;margin-top:4px;">{int(pct or 0)}</div>'
+        f'</div>'
+    )
+
+
+def _render_scores_panel(scores: dict):
+    ats = scores.get("ats_match") or {}
+    hr = scores.get("hr") or {}
+    if not ats and not hr:
+        return
+
+    st.markdown("##### 🎯 Resume scoring")
+    col1, col2 = st.columns(2)
+    with col1:
+        _render_score_circle("ATS keyword match", int(ats.get("match_pct", 0)))
+        missing = ats.get("missing") or {}
+        flat_missing = []
+        for tier in ("required", "preferred", "soft"):
+            flat_missing.extend(missing.get(tier) or [])
+        if flat_missing:
+            st.markdown("**Missing keywords**")
+            st.markdown(" ".join(f"`{k}`" for k in flat_missing))
+        else:
+            st.caption("All extracted keywords are covered.")
+
+    with col2:
+        _render_score_circle("HR perspective", int(hr.get("hr_score", 0)))
+        if hr.get("rationale"):
+            st.caption(hr["rationale"])
+        weak = hr.get("weakest_areas") or []
+        if weak:
+            st.markdown("**Areas to strengthen**")
+            for a in weak:
+                st.markdown(f"- {a}")
+
+    if scores.get("retried"):
+        st.caption("🔁 Auto-retried once due to low initial scores. Final scores shown above.")
+
+    matched = ats.get("matched") or {}
+    flat_matched = []
+    for tier in ("required", "preferred", "soft"):
+        flat_matched.extend(matched.get(tier) or [])
+    if flat_matched:
+        with st.expander(f"✅ Matched keywords ({len(flat_matched)})", expanded=False):
+            for tier in ("required", "preferred", "soft"):
+                items = matched.get(tier) or []
+                if items:
+                    st.markdown(f"_{tier}:_ " + ", ".join(items))
 
 
 @st.cache_resource
@@ -93,23 +429,71 @@ def get_executor() -> ThreadPoolExecutor:
     return ThreadPoolExecutor(max_workers=3, thread_name_prefix="jia-gen")
 
 
+_GENERATIONS: list = []
+_GENERATIONS_LOCK = threading.Lock()
+_GENERATIONS_CAP = 200  # FIFO cap to keep memory bounded over long uptime
+
+
 def get_generations() -> list:
-    if "generations" not in st.session_state:
-        st.session_state.generations = []
-    return st.session_state.generations
+    """Process-level list of generation records (resume + cover letter).
+
+    Lives outside `st.session_state` so the tray survives browser refreshes,
+    cross-tab navigation, and any Streamlit page reruns. Reset only when the
+    Streamlit Python process itself restarts. Returns a snapshot list copy so
+    callers iterating it don't race with mutations.
+    """
+    with _GENERATIONS_LOCK:
+        return list(_GENERATIONS)
 
 
-def submit_generation(kind: str, title: str, company: str, jd_text: str):
+def submit_generation(kind: str, title: str, company: str, jd_text: str, *, location: str = ""):
     fn = generate_resume if kind == "resume" else generate_cover_letter
-    fut = get_executor().submit(fn, title, company, jd_text)
-    get_generations().append({
-        "id": uuid.uuid4().hex[:8],
-        "kind": kind,
-        "title": title,
-        "company": company,
-        "future": fut,
-        "started_at": time.time(),
-    })
+    if kind == "resume":
+        fut = get_executor().submit(fn, title, company, jd_text, location=location)
+    else:
+        fut = get_executor().submit(fn, title, company, jd_text)
+    with _GENERATIONS_LOCK:
+        _GENERATIONS.append({
+            "id": uuid.uuid4().hex[:8],
+            "kind": kind,
+            "title": title,
+            "company": company,
+            "future": fut,
+            "started_at": time.time(),
+        })
+        if len(_GENERATIONS) > _GENERATIONS_CAP:
+            del _GENERATIONS[: len(_GENERATIONS) - _GENERATIONS_CAP]
+    return fut
+
+
+def submit_all_missing_strong_fits(min_score: int = 80) -> int:
+    """Queue resume generation for every strong-fit job that doesn't already
+    have a resume on disk. Returns count submitted.
+
+    Uses the same ThreadPoolExecutor as the per-row Generate button, so
+    they appear in the 🛠️ Generations sidebar tray and respect the 3-worker
+    parallelism cap. Idempotent — skips files that already exist (matched via
+    `existing_resume_path`, which finds both new + legacy filename forms).
+    """
+    df = load_jobs()
+    if df.empty:
+        return 0
+    strong = df[
+        (df["score_total"].fillna(0) >= min_score) & (df["tier"] == "strong")
+    ].sort_values("score_total", ascending=False)
+    submitted = 0
+    for _, r in strong.iterrows():
+        title, company = r["title"], r["company"]
+        location = r.get("location") or ""
+        path = existing_resume_path(title, company, location)
+        if path.exists():
+            continue
+        submit_generation(
+            "resume", title, company, r.get("description") or "", location=location
+        )
+        _mark_pending(r["hash"], "resume")
+        submitted += 1
+    return submitted
 
 
 @st.fragment(run_every=2)
@@ -159,7 +543,8 @@ def render_generations_tray():
                     st.error(f"Read failed: {e}", icon="❌")
 
     if st.button("Clear completed", key="clear_gens"):
-        st.session_state.generations = [g for g in gens if not g["future"].done()]
+        with _GENERATIONS_LOCK:
+            _GENERATIONS[:] = [g for g in _GENERATIONS if not g["future"].done()]
         st.rerun()
 
 
@@ -212,6 +597,8 @@ def run_pipeline(do_scrape: bool, do_prefilter: bool, do_score: bool, score_limi
                         title=j["title"], company=j["company"], location=j["location"],
                         description=j["description"] or "", sponsorship=j["sponsorship_status"],
                     )
+                    if not result:
+                        db.record_score_failure(j["hash"])
                     if result:
                         total = int(result.get("total", 0))
                         tier = result.get("tier") or compute_tier(total)
@@ -227,7 +614,7 @@ def run_pipeline(do_scrape: bool, do_prefilter: bool, do_score: bool, score_limi
                             and auto_queued < AUTO_RESUME_CAP_PER_CYCLE
                         ):
                             loc = j.get("location") or ""
-                            if not expected_resume_path(j["title"], j["company"], loc).exists():
+                            if not existing_resume_path(j["title"], j["company"], loc).exists():
                                 submit_generation(
                                     "resume", j["title"], j["company"], j["description"] or ""
                                 )
@@ -289,6 +676,8 @@ def _run_pipeline_headless(score_limit: int) -> dict:
                     title=j["title"], company=j["company"], location=j["location"],
                     description=j["description"] or "", sponsorship=j["sponsorship_status"],
                 )
+                if not result:
+                    db.record_score_failure(j["hash"])
                 if result:
                     total = int(result.get("total", 0))
                     tier = result.get("tier") or compute_tier(total)
@@ -358,7 +747,8 @@ def get_autoscrape_state() -> dict:
         if _AUTO_STATE is None:
             _AUTO_STATE = {
                 "enabled": False,
-                "interval_seconds": 1800,  # 30 min
+                "interval_seconds": 21600,  # 6 hours — fresh enough for job listings,
+                                            # cheap enough on token spend
                 "score_limit": 50,
                 "last_run_at": None,
                 "last_started_at": None,
@@ -416,7 +806,7 @@ def render_autoscrape_controls():
     }
     current_label = next(
         (k for k, v in interval_choices.items() if v == snap["interval_seconds"]),
-        "30 min",
+        "6 hours",
     )
     label = st.selectbox(
         "Interval", list(interval_choices.keys()),
@@ -471,6 +861,27 @@ def render_pipeline_controls(df_empty: bool):
         if st.button("Run now", type="primary", use_container_width=True, key="run_pipeline_btn"):
             run_pipeline(do_scrape, do_prefilter, do_score, int(score_limit))
             st.cache_data.clear()
+            st.rerun()
+
+    with st.sidebar.expander("📝 Bulk generate", expanded=False):
+        st.caption(
+            "Queues resume generation for every strong-fit job that doesn't "
+            "already have a resume on disk. Watch the **🛠️ Generations** panel."
+        )
+        if st.button(
+            "Generate all missing strong-fit resumes",
+            type="primary",
+            use_container_width=True,
+            key="bulk_gen_btn",
+        ):
+            n = submit_all_missing_strong_fits()
+            if n:
+                st.toast(
+                    f"📝 Queued {n} resume generation{'s' if n != 1 else ''} — see the 🛠️ Generations tray.",
+                    icon="📝",
+                )
+            else:
+                st.toast("All strong fits already have resumes ✓", icon="✅")
             st.rerun()
 
 
@@ -565,6 +976,7 @@ def render_job_details(job: dict):
     score = job.get("score_total")
     tier = (job.get("tier") or "").lower()
     tier_color = TIER_COLORS.get(tier, "#6b7280")
+    job_hash = job["hash"]
 
     head_l, head_r = st.columns([0.78, 0.22])
     with head_l:
@@ -583,6 +995,46 @@ def render_job_details(job: dict):
             f'{TIER_LABELS.get(tier, "UNSCORED")}</span></div></div>',
             unsafe_allow_html=True,
         )
+
+    # ------------------------------------------------------------------
+    # Top action bar: Applied toggle (prominent) + Open posting link
+    # ------------------------------------------------------------------
+    bar_l, bar_r = st.columns([0.5, 0.5])
+    with bar_l:
+        applied_now = st.toggle(
+            "✓ Mark as applied",
+            value=bool(job.get("applied")),
+            key=f"applied_toggle_{job_hash}",
+            help="Tracked in the DB. Filterable from the sidebar.",
+        )
+        if bool(applied_now) != bool(job.get("applied")):
+            db.set_applied(job_hash, bool(applied_now))
+            st.cache_data.clear()
+            st.rerun()
+    with bar_r:
+        if job.get("url"):
+            st.link_button(
+                "🔗 OPEN JOB POSTING ↗",
+                job["url"],
+                use_container_width=True,
+                type="primary",
+                help="Opens the original job posting in a new browser tab.",
+            )
+
+    # ------------------------------------------------------------------
+    # Quick copy strip — always visible. `st.code` blocks show a one-click
+    # copy icon on hover, which is Streamlit's only native per-cell-style
+    # copy affordance. Laid out as a 2-up grid so it stays compact.
+    # ------------------------------------------------------------------
+    st.caption("📋 Hover any block below → click the copy icon (top-right corner).")
+    qc_l, qc_r = st.columns(2)
+    with qc_l:
+        st.code(job.get("title", ""), language=None)
+        st.code(job.get("company", ""), language=None)
+    with qc_r:
+        if job.get("url"):
+            st.code(job["url"], language=None)
+        st.code(f"{job.get('title','')} at {job.get('company','')}", language=None)
 
     pills = []
     sp_key = job.get("sponsorship_status") or "unknown"
@@ -617,27 +1069,6 @@ def render_job_details(job: dict):
         except Exception:
             pass
 
-    job_hash = job["hash"]
-
-    track_col, link_col = st.columns([0.5, 0.5])
-    with track_col:
-        applied_now = st.radio(
-            "Application",
-            ["Not applied", "Applied"],
-            index=1 if job.get("applied") else 0,
-            horizontal=True,
-            key=f"applied_{job_hash}",
-            label_visibility="collapsed",
-        )
-        new_state = applied_now == "Applied"
-        if new_state != bool(job.get("applied")):
-            db.set_applied(job_hash, new_state)
-            st.cache_data.clear()
-            st.rerun()
-    with link_col:
-        if job.get("url"):
-            st.link_button("Open posting", job["url"])
-
     notes = st.text_area(
         "Notes",
         value=job.get("notes") or "",
@@ -650,8 +1081,13 @@ def render_job_details(job: dict):
         st.cache_data.clear()
 
     with st.expander("Job description", expanded=False):
-        if job.get("description"):
-            st.text(job["description"][:8000])
+        raw = job.get("description") or ""
+        if raw:
+            cleaned = clean_jd_text(raw)[:8000]
+            # Render as monospace text so paragraph breaks and bullet
+            # indentation survive without inviting markdown re-interpretation
+            # (JD copy occasionally contains stray '*' / '_' / '#' characters).
+            st.text(cleaned)
         else:
             st.caption("No description captured.")
 
@@ -660,6 +1096,7 @@ def render_job_details(job: dict):
     with gen1:
         if st.button("Generate resume", key=f"resume_{job_hash}", use_container_width=True):
             submit_generation("resume", job["title"], job["company"], job.get("description") or "")
+            _mark_pending(job_hash, "resume")
             st.toast(f"📝 Generating resume for {job['company']}...", icon="📝")
             st.rerun()
     with gen2:
@@ -667,13 +1104,57 @@ def render_job_details(job: dict):
             "Generate cover letter", key=f"cover_{job_hash}", use_container_width=True
         ):
             submit_generation("cover", job["title"], job["company"], job.get("description") or "")
+            _mark_pending(job_hash, "cover")
             st.toast(f"✉️ Generating cover letter for {job['company']}...", icon="✉️")
             st.rerun()
 
+    # Auto-refreshing artifacts block — picks up freshly-generated files
+    # without requiring a manual page refresh, and shows in-flight progress
+    # while a generation is running in the background thread.
+    # Use `existing_resume_path` so legacy (no-suffix) filenames are still
+    # discovered alongside the new location-aware naming.
+    resume_path = existing_resume_path(
+        job["title"], job["company"], job.get("location") or ""
+    )
+    cover_path = expected_cover_letter_path(job["title"], job["company"])
+    _render_artifacts_fragment(
+        job_hash=job_hash,
+        job_title=job["title"],
+        job_company=job["company"],
+        job_location=job.get("location") or "",
+        job_description=job.get("description") or "",
+        resume_path_str=str(resume_path),
+        cover_path_str=str(cover_path),
+    )
 
+
+def _df_fingerprint(d: pd.DataFrame):
+    """Fast content fingerprint for st.cache_data hashing of a DataFrame.
+
+    Hashes only the columns that drive the table view — hash (row identity),
+    score_total, tier, applied — so notes/JD edits don't bust the cache. Costs
+    a few ms on 6k rows; pays back many-fold by avoiding the full reshape.
+    """
+    if d is None or d.empty:
+        return ()
+    cols = [c for c in ("hash", "score_total", "tier", "applied") if c in d.columns]
+    if not cols:
+        return (len(d),)
+    h = pd.util.hash_pandas_object(d[cols].fillna(""), index=False)
+    return (len(d), int(h.sum()))
+
+
+@st.cache_data(show_spinner=False, hash_funcs={pd.DataFrame: _df_fingerprint})
 def _build_table_view(df: pd.DataFrame) -> pd.DataFrame:
-    """Reshape the raw jobs DataFrame into a compact display DataFrame."""
+    """Reshape the raw jobs DataFrame into a compact display DataFrame.
+    Cached on a cheap fingerprint of the source df (size + hash sum + score sum)
+    so the column-by-column transformation only runs when the underlying data
+    actually changes."""
     out = pd.DataFrame()
+
+    # Order: link column first (left), then title — matches the user's preference
+    # to land on "open" before scanning down each row's content.
+    out["url"] = df["url"]
     out["score"] = df["score_total"].fillna(0).astype(int)
     out["tier"] = df["tier"].fillna("").map(lambda t: TIER_EMOJI.get(t, "—"))
     out["title"] = df["title"]
@@ -696,16 +1177,48 @@ def _build_table_view(df: pd.DataFrame) -> pd.DataFrame:
     out["posted"] = df["posted_at"].fillna("").astype(str).str[:10]
     out["source"] = df["source"]
     out["applied"] = df["applied"].astype(bool)
-    out["url"] = df["url"]
+    out["hash"] = df["hash"]  # carried for editor-row → DB writes; hidden in UI
     return out
 
 
-def render_table(df: pd.DataFrame) -> int | None:
-    """Renders the jobs table. Returns the iloc-index of the selected row, or None."""
-    view = _build_table_view(df)
-    event = st.dataframe(
+def render_table(df: pd.DataFrame) -> str | None:
+    """Renders the jobs table as an `st.data_editor`. Returns the *hash* of
+    the selected row, or None.
+
+    Two interactive columns:
+      - **👁 (View)**: checkbox that drives the detail panel below. Single-row
+        exclusive — toggling another row's View takes selection from the
+        previous one.
+      - **Applied**: editable checkbox that writes through to the DB instantly.
+
+    All other columns are read-only.
+    """
+    view = _build_table_view(df).copy()
+
+    # Inject a session-controlled "view" column so the detail panel selection
+    # round-trips through the editor. Default False; True for whichever row's
+    # hash matches `selected_job_hash` in session state.
+    selected_hash = st.session_state.get("selected_job_hash")
+    view.insert(0, "view", view["hash"].eq(selected_hash) if selected_hash else False)
+
+    # Hide the `hash` column visually but keep it in the dataframe so we can
+    # match edits back to DB rows by stable identity.
+    column_order = [c for c in view.columns if c != "hash"]
+
+    edited = st.data_editor(
         view,
+        column_order=column_order,
         column_config={
+            "view": st.column_config.CheckboxColumn(
+                "👁", width="small",
+                help="Click to open this row's details below. Click again to close.",
+            ),
+            "url": st.column_config.LinkColumn(
+                "Open",
+                display_text="🔗 Open ↗",
+                width="medium",
+                help="Open the original posting in a new tab.",
+            ),
             "score": st.column_config.ProgressColumn(
                 "Score", format="%d", min_value=0, max_value=100, width="small"
             ),
@@ -717,18 +1230,58 @@ def render_table(df: pd.DataFrame) -> int | None:
             "sponsor": st.column_config.TextColumn("Visa", width="small", help="Sponsorship status"),
             "posted": st.column_config.TextColumn("Posted", width="small"),
             "source": st.column_config.TextColumn("Source", width="small"),
-            "applied": st.column_config.CheckboxColumn("Applied", width="small", disabled=True),
-            "url": st.column_config.LinkColumn("Open", display_text="↗", width="small"),
+            "applied": st.column_config.CheckboxColumn(
+                "Applied", width="small",
+                help="Toggle to mark this job as applied. Writes through to the DB.",
+            ),
         },
+        disabled=[
+            "url", "score", "tier", "title", "company", "location",
+            "salary", "sponsor", "posted", "source",
+        ],
         hide_index=True,
         use_container_width=True,
         height=560,
-        selection_mode="single-row",
-        on_select="rerun",
-        key="jobs_table",
+        key="jobs_editor",
     )
-    rows = event.selection.rows if event.selection else []
-    return rows[0] if rows else None
+
+    # Pull the per-row diff from the editor's session state (cheaper than
+    # comparing whole DataFrames, and stable across pagination).
+    state = st.session_state.get("jobs_editor", {})
+    edited_rows: dict = state.get("edited_rows") or {}
+
+    needs_rerun = False
+    for row_idx_str, changes in edited_rows.items():
+        try:
+            row_idx = int(row_idx_str)
+        except (TypeError, ValueError):
+            continue
+        if row_idx < 0 or row_idx >= len(view):
+            continue
+        row_hash = view["hash"].iloc[row_idx]
+
+        if "applied" in changes:
+            new_applied = bool(changes["applied"])
+            db.set_applied(row_hash, new_applied)
+            st.cache_data.clear()
+            needs_rerun = True
+
+        if "view" in changes:
+            new_view = bool(changes["view"])
+            if new_view:
+                st.session_state["selected_job_hash"] = row_hash
+            else:
+                # Unchecked the currently-selected row → close panel
+                if st.session_state.get("selected_job_hash") == row_hash:
+                    st.session_state.pop("selected_job_hash", None)
+            needs_rerun = True
+
+    if needs_rerun:
+        # Fragment-scoped rerun: only the table + detail panel re-renders;
+        # the page header, sidebar, and metrics stay in place.
+        st.rerun(scope="fragment")
+
+    return st.session_state.get("selected_job_hash")
 
 
 def main():
@@ -768,15 +1321,28 @@ def main():
     start = (page - 1) * page_size
     page_df = filtered.iloc[start : start + page_size].reset_index(drop=True)
 
-    selected_idx = render_table(page_df)
+    _render_table_and_detail(page_df, filtered)
 
-    if selected_idx is not None and 0 <= selected_idx < len(page_df):
-        st.markdown("---")
-        job = page_df.iloc[selected_idx].to_dict()
-        with st.container(border=True):
-            render_job_details(job)
+
+@st.fragment
+def _render_table_and_detail(page_df: pd.DataFrame, filtered: pd.DataFrame):
+    """Single fragment so row selection / Applied edits only re-render this
+    block — sidebar, header, and metrics stay put. Eliminates the full-page
+    flash on every click."""
+    selected_hash = render_table(page_df)
+
+    if selected_hash:
+        # Look up in the full filtered df so the selection survives pagination
+        matches = filtered[filtered["hash"] == selected_hash]
+        if not matches.empty:
+            st.markdown("---")
+            job = matches.iloc[0].to_dict()
+            with st.container(border=True):
+                render_job_details(job)
+        else:
+            st.caption("Selected job is no longer in the filtered set. Adjust filters or pick another row.")
     else:
-        st.caption("👉 Click a row above to see details and generate resume / cover letter.")
+        st.caption("👉 Toggle the **👁** column on any row to open its details.")
 
 
 if __name__ == "__main__":

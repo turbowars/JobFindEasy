@@ -112,7 +112,14 @@ JOB DESCRIPTION:
 {description[:8000] if description else "(not available - score conservatively)"}"""
 
     try:
-        text = chat(system=SYSTEM_PROMPT, user=user_msg, model=model, max_tokens=600)
+        # Caching disabled: the 6-dimension rubric is only ~727 tokens — far
+        # below Haiku's 2048-token caching minimum. Anthropic silently drops
+        # cache_control below the threshold, so caching here is a no-op AND
+        # the provider pin overhead isn't worth it. Re-enable if the rubric
+        # is ever expanded past 2048 tokens.
+        text = chat(
+            system=SYSTEM_PROMPT, user=user_msg, model=model, max_tokens=600,
+        )
     except Exception as e:
         log.warning("LLM scoring API error: %s", e)
         return None

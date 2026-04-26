@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
-# Daily pipeline. Cron-friendly: activates venv, runs full pipeline, logs.
+# Daily morning pipeline. Cron-friendly: activates venv, runs the *low-cost*
+# steps only, logs.
+#
+# Why no `scrape` here:
+#   The autoscrape thread inside Streamlit (and the runner's per-source
+#   `skip_if_scraped_within_minutes` window) already keeps the DB fresh on
+#   its own cadence (default 6 hours). This cron's job is to run the
+#   non-scrape pieces — score any unscored survivors and fire the morning
+#   notification — without burning duplicate API calls.
 #
 # Add to crontab:
-#   30 7 * * 1-5 cd /full/path/to/job-intelligence-agent && ./scripts/run_daily.sh
+#   0 8 * * * /full/path/to/JobFindEasy/scripts/run_daily.sh
 
 set -euo pipefail
 
@@ -21,7 +29,11 @@ mkdir -p data/exports
 LOG="data/run-$(date +%F).log"
 
 echo "===== run started $(date -Iseconds) =====" >> "$LOG"
-python -m src.cli run --score-limit 200 >> "$LOG" 2>&1
+# Prefilter any rows that haven't been filtered yet (safe; scrape did the
+# inserts, autoscrape may have only filtered some), then score, then notify.
+python -m src.cli prefilter      >> "$LOG" 2>&1 || true
+python -m src.cli score --limit 200 >> "$LOG" 2>&1 || true
+python -m src.cli notify         >> "$LOG" 2>&1 || true
 echo "===== run finished $(date -Iseconds) =====" >> "$LOG"
 
 # Print last 20 lines for cron mail / immediate inspection

@@ -100,6 +100,9 @@ def score(limit: int):
             description=j["description"] or "", sponsorship=j["sponsorship_status"],
         )
         if not result:
+            n = db.record_score_failure(j["hash"])
+            if n >= 3:
+                console.print(f"[yellow]dead-letter[/]: {j['title'][:40]} @ {j['company']} (failed {n}x)")
             continue
         total = int(result.get("total", 0))
         tier = result.get("tier") or compute_tier(total)

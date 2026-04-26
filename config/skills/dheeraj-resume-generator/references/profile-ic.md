@@ -163,9 +163,9 @@ Staff-level frontend engineer with 15+ years architecting and shipping productio
 
 ---
 
-### NowFloats Technologies Ltd. · Principal Engineer (UI / UX) · Hyderabad, India · Mar 2017 – Feb 2018
+### nowfloats · Principal Engineer (UI / UX) · Hyderabad, India · Mar 2017 – Feb 2018
 
-*Owned frontend architecture for the NowFloats web platform, a consumer and merchant product serving 10M+ small-and-medium business (SMB) merchants across India and Southeast Asia. Led a 12-engineer UI team while staying deeply hands-on in architecture and platform code.*
+*Owned frontend architecture for the nowfloats web platform, a consumer and merchant product serving 10M+ small-and-medium business (SMB) merchants across India and Southeast Asia. Led a 12-engineer UI team while staying deeply hands-on in architecture and platform code.*
 
 - Architected the mobile-first Progressive Web App (PWA) that SMB merchants used to manage their digital storefronts on low-end Android devices over unreliable networks. Implemented offline-first sync, service workers, and background sync queues.
 - Built the real-time merchant dashboard using WebSockets and Redis pub/sub for live order, inquiry, and chat notifications. Designed the reconnection, backoff, and message-replay protocol for mobile networks that drop connections frequently.

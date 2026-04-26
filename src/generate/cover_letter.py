@@ -56,6 +56,12 @@ def _scrub(s: str) -> str:
     return s.replace("—", ". ").replace("–", "-")
 
 
+def expected_cover_letter_path(jd_title: str, jd_company: str) -> Path:
+    safe_t = re.sub(r"[^A-Za-z0-9]+", "_", jd_title).strip("_")
+    safe_c = re.sub(r"[^A-Za-z0-9]+", "_", jd_company).strip("_")
+    return OUTPUT_DIR / f"CoverLetter_Dheeraj_Sampath_{safe_t}_{safe_c}.docx"
+
+
 def generate_cover_letter(jd_title: str, jd_company: str, jd_text: str, model: Optional[str] = None) -> tuple[Path, str]:
     model = model or os.environ.get("GENERATION_MODEL", "anthropic/claude-sonnet-4.5")
 
@@ -70,37 +76,57 @@ Write the cover letter now."""
     text = chat(system=SYSTEM, user=user, model=model, max_tokens=1500).strip()
     text = _scrub(text)
 
-    # Build .docx
+    # Build .docx — match the resume's Arial / minimal-sleek treatment so the
+    # two artifacts feel like a coordinated set.
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc = Document()
     for section in doc.sections:
-        section.top_margin = Inches(1.0)
-        section.bottom_margin = Inches(1.0)
-        section.left_margin = Inches(1.0)
-        section.right_margin = Inches(1.0)
+        section.top_margin = Inches(0.8)
+        section.bottom_margin = Inches(0.8)
+        section.left_margin = Inches(0.8)
+        section.right_margin = Inches(0.8)
     style = doc.styles["Normal"]
-    style.font.name = "Calibri"
+    style.font.name = "Arial"
     style.font.size = Pt(11)
+    style.paragraph_format.space_after = Pt(2)
+    style.paragraph_format.line_spacing = 1.25
 
-    # Header
-    doc.add_paragraph("Dheeraj Sampath")
-    doc.add_paragraph("Austin, TX  |  248-873-8929  |  dheerajsampath@proton.me")
-    doc.add_paragraph("")
-    doc.add_paragraph(f"Re: {jd_title} at {jd_company}")
+    # Header — matches resume name treatment (centered, ALL CAPS, letter-spaced)
+    name_p = doc.add_paragraph()
+    name_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    name_run = name_p.add_run("DHEERAJ SAMPATH")
+    name_run.bold = True
+    name_run.font.name = "Arial"
+    name_run.font.size = Pt(16)
+    name_run.font.spacing = Pt(2)
+
+    contact_p = doc.add_paragraph()
+    contact_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    cr = contact_p.add_run("Austin, TX | 248-873-8929 | dheerajsampath@proton.me")
+    cr.font.name = "Arial"
+    cr.font.size = Pt(10)
+
+    # Subject line
+    subj_p = doc.add_paragraph()
+    subj_p.paragraph_format.space_before = Pt(14)
+    sr = subj_p.add_run(f"Re: {jd_title} at {jd_company}")
+    sr.bold = True
+    sr.font.name = "Arial"
+    sr.font.size = Pt(11)
+
     doc.add_paragraph("")
 
     for para in text.split("\n\n"):
         para = para.strip()
         if para:
-            doc.add_paragraph(para)
+            p = doc.add_paragraph(para)
+            p.paragraph_format.space_after = Pt(8)
 
     doc.add_paragraph("")
     doc.add_paragraph("Best,")
     doc.add_paragraph("Dheeraj Sampath")
 
-    safe_title = re.sub(r"[^A-Za-z0-9]+", "_", jd_title).strip("_")
-    safe_company = re.sub(r"[^A-Za-z0-9]+", "_", jd_company).strip("_")
-    filename = f"CoverLetter_Dheeraj_Sampath_{safe_title}_{safe_company}.docx"
-    output_path = OUTPUT_DIR / filename
+    output_path = expected_cover_letter_path(jd_title, jd_company)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_path))
 

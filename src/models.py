@@ -2,9 +2,40 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from typing import Optional
+
+
+# Common job-title abbreviations that scrapers see differently across sources.
+# Normalized BEFORE hashing so "Sr. Engineer" and "Senior Engineer" produce the
+# same hash (and don't end up as separate rows in the DB).
+_TITLE_ABBREV = {
+    r"\bsr\.?\b": "senior",
+    r"\bjr\.?\b": "junior",
+    r"\bmgr\.?\b": "manager",
+    r"\beng\.?\b": "engineer",
+    r"\bengr\.?\b": "engineer",
+    r"\bdev\b": "developer",
+    r"\bvp\b": "vice president",
+    r"\bdir\.?\b": "director",
+    r"\bswe\b": "software engineer",
+}
+_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+
+
+def _normalize_for_hash(s: str) -> str:
+    """Lowercase, expand common abbreviations, strip non-alphanumerics, collapse
+    whitespace. Used by `Job.compute_hash` so superficial title variants
+    ("Sr.", "Senior", "Sr") don't create duplicate rows."""
+    if not s:
+        return ""
+    s = s.lower().strip()
+    for pattern, replacement in _TITLE_ABBREV.items():
+        s = re.sub(pattern, replacement, s)
+    s = _NON_ALNUM.sub(" ", s)
+    return " ".join(s.split())
 
 
 @dataclass
@@ -46,8 +77,18 @@ class Job:
             self.hash = self.compute_hash()
 
     def compute_hash(self) -> str:
-        """Stable identity. Same posting on two days = same hash."""
-        key = f"{self.source}|{self.company.lower()}|{self.title.lower()}|{self.location.lower()}".encode()
+        """Stable identity. Same posting on two days = same hash.
+
+        Inputs are normalized (lowercase, abbrev-expanded, punctuation-stripped,
+        whitespace-collapsed) before hashing, so superficial title variants
+        like 'Sr. Engineer' / 'Senior Engineer' / 'Senior  Engineer' all map
+        to the same hash and don't end up as separate rows.
+        """
+        key = "|".join(
+            _normalize_for_hash(part) for part in (
+                self.source, self.company, self.title, self.location
+            )
+        ).encode()
         return hashlib.sha256(key).hexdigest()[:16]
 
     def to_dict(self) -> dict:
