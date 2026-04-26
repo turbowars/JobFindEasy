@@ -1,0 +1,28 @@
+[project]
+name = "job-intelligence-agent"
+version = "0.2.0"
+description = "Local-first job search agent for Dheeraj"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27.0",
+    "feedparser>=6.0.11",
+    "anthropic>=0.39.0",
+    "streamlit>=1.38.0",
+    "pandas>=2.2.0",
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.1",
+    "python-docx>=1.1.2",
+    "rich>=13.7.0",
+    "click>=8.1.7",
+]
+
+[project.scripts]
+jia = "src.cli:cli"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]

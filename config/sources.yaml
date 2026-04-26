@@ -1,0 +1,159 @@
+# Unified source registry. Each entry is consumed by the corresponding scraper
+# in src/scrapers/registry.py. Adding a board = one line.
+#
+# - For ATS providers (greenhouse, lever, ashby, smartrecruiters, workable, recruitee):
+#   the `slug` is the URL fragment, e.g. boards.greenhouse.io/{slug}.
+# - For aggregators with a single endpoint (remotive, aijobs, working_nomads, ycombinator):
+#   no slug needed.
+# - For HN Who's Hiring: needs the monthly thread id, auto-resolved if `auto: true`.
+#
+# Concurrency: the runner fans out via asyncio with a semaphore; default cap = 10.
+
+defaults:
+  concurrency: 10
+  request_timeout_seconds: 30
+
+# === ATS-direct (highest signal, full JD, public APIs) ===========================
+
+greenhouse:
+  # Big tech / mid-stage
+  - airbnb
+  - stripe
+  - figma
+  - vercel
+  - replit
+  - anthropic
+  - openai
+  - perplexityai
+  - notion
+  - discord
+  - dropbox
+  - doordash
+  - pinterest
+  - reddit
+  - twilio
+  - asana
+  - snowflake
+  - gitlab
+  # Fintech (your domain bonus)
+  - ramp
+  - mercury
+  - brex
+  - plaid
+  - coinbase
+  - robinhood
+  - chime
+  # Devtools / platform
+  - sentry
+  - datadog
+  - hashicorp
+  - mongodb
+  - confluent
+  - retool
+  - clickhouse
+  - launchdarkly
+  - getdbt
+  - airbyte
+  - prefect
+  - grafanalabs
+  - planetscale
+  - supabase
+  - render
+  - neon
+  - deno
+
+lever:
+  - netflix
+  - spotify
+  - shopify
+  - canva
+  - intercom
+  - github
+  - duolingo
+  - palantir
+  - kraken
+  - rippling
+  - faire
+  - attentive
+  - clipboardhealth
+  - hubspot
+
+ashby:
+  # You've already applied to some of these — keep them in your radar
+  - vanta
+  - boulevard
+  - harvey
+  - posthog
+  - cohere
+  - lovable
+  - browserbase
+  - elevenlabs
+  - hex
+  - modal
+  - linear
+  - cursor
+  - openai
+  - anthropic
+
+smartrecruiters:
+  - atlassian
+  - visa
+  - twitch
+
+workable:
+  # Add slugs as you find them — workable hosts many smaller SaaS companies
+  []
+
+recruitee:
+  # European startups primarily — add as you find them
+  []
+
+# === Aggregators / niche boards (kept from your 50, only the high-signal ones) ===
+
+remotive:
+  # Public JSON API. Pulls software-dev category by default.
+  enabled: true
+  categories:
+    - software-dev
+    - product
+    - design   # included in case some EM roles get tagged here
+
+aijobs:
+  # AI-Jobs.net via RSS. Hits your AI EM target.
+  enabled: true
+
+working_nomads:
+  # RSS feed.
+  enabled: true
+  categories:
+    - development
+    - management
+
+jobspresso:
+  # Curated remote-tech RSS feed (https://jobspresso.co/feed/).
+  enabled: true
+
+# === Founder-posted / curated (no recruiter spam) ================================
+
+hackernews:
+  # "Who is hiring?" monthly thread, via Algolia HN Search API.
+  # auto: true resolves the latest thread automatically.
+  enabled: true
+  auto: true
+  keyword_filters:
+    # Only retrieve comments matching these keywords (case-insensitive)
+    - "engineering manager"
+    - "frontend manager"
+    - "frontend lead"
+    - "director of engineering"
+    - "head of engineering"
+    - "platform manager"
+
+ycombinator:
+  # workatastartup.com backend API. Curated YC companies, often pre-ATS.
+  enabled: true
+  filters:
+    role_types:
+      - eng_manager
+      - manager
+    remote: true

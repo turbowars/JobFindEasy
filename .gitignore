@@ -1,0 +1,35 @@
+# Python build & compiled
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+wheels/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+
+# SQLite database
+data/jobs.db
+data/exports/
+data/run-*.log
+
+# Streamlit
+.streamlit/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

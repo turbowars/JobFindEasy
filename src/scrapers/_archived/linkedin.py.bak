@@ -1,0 +1,220 @@
+"""LinkedIn scraper.
+
+Strategy: persistent Playwright browser context, logged in once interactively
+by the user. From that point on, scrolling LinkedIn search results looks
+exactly like a logged-in human session, which is the actual bot-detection
+bypass. We do NOT do credential injection or undetected-chromedriver tricks.
+
+Fallback: python-jobspy, which has its own anti-detection.
+
+The persistent profile lives at data/playwright_profile/.
+Run `python -m src.cli linkedin-login` once to create the session.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+import time
+from pathlib import Path
+from typing import Iterable
+from urllib.parse import urlencode
+
+from ..models import Job
+from .base import BaseScraper
+
+log = logging.getLogger(__name__)
+
+PROFILE_DIR = Path(__file__).parent.parent.parent / "data" / "playwright_profile"
+
+
+def build_search_url(keywords: str, location: str, remote_only: bool, posted_within_days: int) -> str:
+    params = {
+        "keywords": keywords,
+        "location": location,
+        "f_TPR": f"r{posted_within_days * 86400}",  # seconds
+        "f_E": "4,5,6",  # mid-senior, director, executive
+    }
+    if remote_only:
+        params["f_WT"] = "2"  # remote
+    return "https://www.linkedin.com/jobs/search/?" + urlencode(params)
+
+
+class LinkedInScraper(BaseScraper):
+    source = "linkedin"
+
+    def __init__(self, searches: list[dict], headless: bool = True, max_per_search: int = 25):
+        self.searches = searches
+        self.headless = headless
+        self.max_per_search = max_per_search
+
+    def scrape(self) -> Iterable[Job]:
+        return asyncio.run(self._scrape_async())
+
+    async def _scrape_async(self) -> list[Job]:
+        from playwright.async_api import async_playwright
+
+        results: list[Job] = []
+        PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+
+        async with async_playwright() as p:
+            ctx = await p.chromium.launch_persistent_context(
+                user_data_dir=str(PROFILE_DIR),
+                headless=self.headless,
+                viewport={"width": 1280, "height": 900},
+                user_agent=(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                ),
+                locale="en-US",
+                timezone_id="America/Chicago",
+            )
+            page = await ctx.new_page()
+            for spec in self.searches:
+                url = build_search_url(
+                    keywords=spec["keywords"],
+                    location=spec.get("location", "United States"),
+                    remote_only=spec.get("remote_only", False),
+                    posted_within_days=spec.get("posted_within_days", 7),
+                )
+                log.info("linkedin: %s", spec["name"])
+                try:
+                    jobs = await self._scrape_search(page, url)
+                    results.extend(jobs)
+                except Exception as e:
+                    log.warning("linkedin search '%s' failed: %s", spec["name"], e)
+                # Pause between searches — humans don't hammer
+                await asyncio.sleep(3)
+            await ctx.close()
+        return results
+
+    async def _scrape_search(self, page, url: str) -> list[Job]:
+        await page.goto(url, wait_until="domcontentloaded")
+        await asyncio.sleep(2)
+
+        # Detect if not logged in (LinkedIn redirects to /login or shows the auth wall)
+        if "/login" in page.url or "/authwall" in page.url:
+            raise RuntimeError(
+                "LinkedIn session expired or not logged in. "
+                "Run: python -m src.cli linkedin-login"
+            )
+
+        # Scroll to load more cards
+        for _ in range(5):
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await asyncio.sleep(1.5)
+
+        cards = await page.query_selector_all("div.job-card-container, li.jobs-search-results__list-item")
+        jobs: list[Job] = []
+        for card in cards[: self.max_per_search]:
+            try:
+                jobs.append(await self._parse_card(page, card))
+            except Exception as e:
+                log.debug("card parse failed: %s", e)
+        return [j for j in jobs if j is not None]
+
+    async def _parse_card(self, page, card) -> Job | None:
+        title_el = await card.query_selector("a.job-card-list__title, a.job-card-container__link")
+        company_el = await card.query_selector(".artdeco-entity-lockup__subtitle, .job-card-container__primary-description")
+        location_el = await card.query_selector(".job-card-container__metadata-item, .artdeco-entity-lockup__caption")
+
+        title = (await title_el.inner_text()).strip() if title_el else ""
+        company = (await company_el.inner_text()).strip() if company_el else ""
+        location = (await location_el.inner_text()).strip() if location_el else ""
+        href = (await title_el.get_attribute("href")) if title_el else ""
+
+        if not title or not company:
+            return None
+
+        if href and href.startswith("/"):
+            href = "https://www.linkedin.com" + href
+        # Strip tracking params
+        href = re.sub(r"\?.*$", "", href) if href else ""
+
+        # Click to load JD pane (skip in headless to save time; description left empty here,
+        # the LLM scorer will handle missing JD by reducing score for those rows)
+        description = ""
+        try:
+            await card.click()
+            await asyncio.sleep(1)
+            jd_pane = await page.query_selector("div.jobs-description__container, article.jobs-description__container")
+            if jd_pane:
+                description = (await jd_pane.inner_text()).strip()
+        except Exception:
+            pass
+
+        loc_lower = location.lower()
+        remote = "remote" in loc_lower
+
+        return Job(
+            source=self.source,
+            company=company,
+            title=title,
+            location=location or "Not specified",
+            url=href,
+            description=description,
+            remote=remote,
+        )
+
+
+class JobSpyFallback(BaseScraper):
+    """Used when LinkedIn session is dead or to broaden coverage."""
+    source = "linkedin"  # JobSpy still pulls from LinkedIn (and others), so we tag accordingly per-row
+
+    def __init__(self, searches: list[dict]):
+        self.searches = searches
+
+    def scrape(self) -> Iterable[Job]:
+        try:
+            from jobspy import scrape_jobs
+        except ImportError:
+            log.warning("jobspy not installed; skipping fallback")
+            return
+
+        for spec in self.searches:
+            try:
+                df = scrape_jobs(
+                    site_name=["linkedin"],
+                    search_term=spec["search_term"],
+                    location=spec.get("location", "Remote"),
+                    results_wanted=spec.get("results_wanted", 25),
+                    hours_old=spec.get("hours_old", 168),
+                    country_indeed="USA",
+                )
+            except Exception as e:
+                log.warning("jobspy search '%s' failed: %s", spec["search_term"], e)
+                continue
+
+            for _, row in df.iterrows():
+                title = str(row.get("title") or "").strip()
+                company = str(row.get("company") or "").strip()
+                if not title or not company:
+                    continue
+
+                desc = str(row.get("description") or "")
+                location = str(row.get("location") or "")
+                url = str(row.get("job_url") or "")
+                remote = bool(row.get("is_remote", False)) or "remote" in location.lower()
+
+                # Best-effort salary
+                smin = row.get("min_amount")
+                smax = row.get("max_amount")
+                try:
+                    smin = int(smin) if smin else None
+                    smax = int(smax) if smax else None
+                except Exception:
+                    smin, smax = None, None
+
+                yield Job(
+                    source=str(row.get("site") or "linkedin"),
+                    company=company,
+                    title=title,
+                    location=location or "Not specified",
+                    url=url,
+                    description=desc,
+                    posted_at=str(row.get("date_posted")) if row.get("date_posted") else None,
+                    salary_min=smin,
+                    salary_max=smax,
+                    remote=remote,
+                )
+            time.sleep(1)
