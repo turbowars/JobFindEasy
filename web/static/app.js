@@ -201,6 +201,65 @@ document.body.addEventListener("htmx:afterRequest", (e) => {
   }
 });
 
+// --------------------------------------------------------------------------
+// Inject job by URL — fetch + extract + score, then refresh the grid and
+// auto-select the new row.
+// --------------------------------------------------------------------------
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("#inject-submit");
+  if (!btn) return;
+  const form = document.getElementById("inject-form");
+  if (!form) return;
+  const input = form.querySelector("sl-input[name=url]");
+  const status = document.getElementById("inject-status");
+  const url = (input && input.value || "").trim();
+  if (!url) { status.textContent = "Paste a URL first."; return; }
+
+  btn.loading = true;
+  btn.disabled = true;
+  status.textContent = "Fetching and extracting…";
+
+  try {
+    const body = new URLSearchParams({ url });
+    const r = await fetch("/actions/inject-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) {
+      status.textContent = "✗ " + (data.error || `HTTP ${r.status}`);
+      flashMessage("Inject failed: " + (data.error || `HTTP ${r.status}`));
+      return;
+    }
+    if (data.duplicate) {
+      status.textContent = `Already in DB: ${data.title} @ ${data.company}`;
+    } else {
+      status.textContent = `✓ ${data.title} @ ${data.company}`;
+    }
+    input.value = "";
+    flashMessage(data.duplicate ? "↺ already had it" : "✓ injected & scored");
+
+    if (typeof window.jia_refreshGrid === "function") {
+      await window.jia_refreshGrid();
+    }
+    if (window._jiaGrid && data.hash) {
+      window._jiaGrid.forEachNode((node) => {
+        if (node.data && node.data.hash === data.hash) {
+          node.setSelected(true, true);
+          window._jiaGrid.ensureNodeVisible(node, "middle");
+        }
+      });
+    }
+  } catch (err) {
+    status.textContent = "✗ " + err.message;
+    flashMessage("Inject failed: " + err.message);
+  } finally {
+    btn.loading = false;
+    btn.disabled = false;
+  }
+});
+
 function flashMessage(msg) {
   let el = document.getElementById("flash");
   if (!el) {

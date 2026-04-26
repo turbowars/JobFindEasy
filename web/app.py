@@ -488,6 +488,59 @@ def action_bulk_generate():
     return JSONResponse({"queued": n})
 
 
+@app.post("/actions/inject-url")
+def action_inject_url(url: str = Form(...)):
+    """Paste-a-link injection. Fetches the URL, LLM-extracts the job fields,
+    upserts into the DB, and runs prefilter + score inline so the row is
+    fully usable the moment it appears in the grid.
+    """
+    import os as _os
+    from src.scrapers.url_inject import inject_from_url
+    from src.enrichment.prefilter import prefilter as run_prefilter
+    from src.enrichment.llm_scorer import score_job, compute_tier, make_client
+
+    job, status = inject_from_url(url)
+    if not job:
+        return JSONResponse({"ok": False, "error": status}, status_code=400)
+
+    inserted = db.upsert_job(job)
+    if not inserted:
+        return JSONResponse(
+            {"ok": True, "hash": job.hash, "duplicate": True,
+             "title": job.title, "company": job.company}
+        )
+
+    ok, reason, sponsorship = run_prefilter(job.title, job.description or "")
+    db.update_prefilter(job.hash, ok, reason, sponsorship)
+
+    if ok:
+        try:
+            client = make_client()
+            model = _os.environ.get("SCORING_MODEL", "anthropic/claude-haiku-4.5")
+            result = score_job(
+                client, model,
+                title=job.title, company=job.company, location=job.location,
+                description=job.description or "", sponsorship=sponsorship,
+            )
+            if result:
+                total = int(result.get("total", 0))
+                tier = result.get("tier") or compute_tier(total)
+                breakdown = json.dumps({k: result.get(k) for k in [
+                    "title_match", "skills_match", "leadership_scope",
+                    "domain_alignment", "location_fit", "comp_confidence",
+                ]})
+                db.update_score(job.hash, total, breakdown,
+                                result.get("rationale", ""), tier)
+        except Exception as e:
+            log.warning("inline score after inject failed: %s", e)
+
+    return JSONResponse({
+        "ok": True, "hash": job.hash, "duplicate": False,
+        "title": job.title, "company": job.company,
+        "prefilter_passed": ok,
+    })
+
+
 @app.post("/actions/clear-completed-generations")
 def action_clear_completed():
     n = state.clear_completed_generations()

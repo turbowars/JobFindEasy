@@ -51,6 +51,23 @@
     Generate missing strong-fit resumes
   </sl-button>
 
+  <!-- Inject job by URL -->
+  <details>
+    <summary class="text-[11px] uppercase tracking-[0.12em] text-ink-3 cursor-pointer select-none py-1">Inject job by URL</summary>
+    <form id="inject-form" class="mt-1.5 space-y-1.5" onsubmit="return false">
+      <sl-input name="url"
+                size="small"
+                placeholder="https://…/jobs/…"
+                clearable
+                required>
+      </sl-input>
+      <sl-button id="inject-submit" size="small" variant="default" style="width:100%;">
+        Fetch & score
+      </sl-button>
+      <div id="inject-status" class="text-[11px] text-ink-3 leading-snug"></div>
+    </form>
+  </details>
+
   <div class="text-[10px] text-ink-3 leading-relaxed pt-2 border-t border-base-300/40">
     <kbd>j</kbd> <kbd>k</kbd> nav
     &nbsp;·&nbsp; <kbd>a</kbd> apply

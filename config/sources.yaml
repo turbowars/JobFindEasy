@@ -40,14 +40,40 @@ greenhouse:
   - asana
   - snowflake
   - gitlab
+  - airtable
+  - lyft
+  - instacart
+  - cloudflare
+  - elastic
+  - cruise
+  - samsara
+  - segment
+  - benchling
+  - scale
+  - rokt
+  - flexport
+  - gusto
+  - zapier
+  - okta
+  - robinhood
+  - klarna
+  - affirm
+  - squarespace
+  - wealthfront
+  - betterup
+  - calm
+  - nuro
+  - waymo
   # Fintech (your domain bonus)
   - ramp
   - mercury
   - brex
   - plaid
   - coinbase
-  - robinhood
   - chime
+  - alloy
+  - parafin
+  - scratchpay
   # Devtools / platform
   - sentry
   - datadog
@@ -66,6 +92,27 @@ greenhouse:
   - render
   - neon
   - deno
+  - fly
+  - railway
+  - turbopuffer
+  - chronosphere
+  - temporaltechnologies
+  - cockroachlabs
+  - dagsterlabs
+  - astronomer
+  - meltano
+  - tigergraph
+  - pinecone
+  - weaviate
+  - vespa
+  - turso
+  # AI / ML stack
+  - huggingface
+  - togetherai
+  - groq
+  - runwayml
+  - mistralai
+  - characterai
 
 lever:
   - netflix
@@ -82,6 +129,32 @@ lever:
   - attentive
   - clipboardhealth
   - hubspot
+  - figma
+  - patreon
+  - quora
+  - eventbrite
+  - kickstarter
+  - bitgo
+  - polygon
+  - alchemy
+  - circle
+  - chainalysis
+  - upstart
+  - opensea
+  - magiceden
+  - dapperlabs
+  - mixpanel
+  - sentilink
+  - mux
+  - vimeo
+  - khan-academy
+  - codecademy
+  - brilliant
+  - masterclass
+  - calendly
+  - loom
+  - pitch
+  - airtm
 
 ashby:
   # You've already applied to some of these — keep them in your radar
@@ -99,19 +172,52 @@ ashby:
   - cursor
   - openai
   - anthropic
+  - replicate
+  - perplexity
+  - sourcegraph
+  - resend
+  - clerk
+  - workos
+  - knock
+  - liveblocks
+  - arc
+  - thebrowser
+  - raycast
+  - warp
+  - granola
+  - mercor
+  - writer
+  - glean
+  - poolside
+  - codeium
+  - magic
+  - tessl
+  - decagon
+  - sierra
+  - crusoe
 
 smartrecruiters:
   - atlassian
   - visa
   - twitch
+  - ubisoft
+  - bosch
+  - skechers
+  - publicismediagroup
+  - capgemini
+  - nielsen
 
 workable:
-  # Add slugs as you find them — workable hosts many smaller SaaS companies
-  []
+  # Workable hosts many smaller SaaS shops. Add slugs you spot.
+  - mavenagi
+  - persona
+  - axonius
+  - panthercommerce
 
 recruitee:
   # European startups primarily — add as you find them
-  []
+  - mollie
+  - bunq
 
 # === Aggregators / niche boards (kept from your 50, only the high-signal ones) ===
 
