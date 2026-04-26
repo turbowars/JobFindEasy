@@ -23,6 +23,7 @@ env/
 data/jobs.db
 data/exports/
 data/run-*.log
+data/launchd-stdout.log
 
 # Streamlit
 .streamlit/

@@ -16,6 +16,7 @@ from docx import Document
 from docx.shared import Pt, Inches
 
 from ..llm import chat
+from . import mirror_to_public
 
 log = logging.getLogger(__name__)
 
@@ -102,5 +103,9 @@ Write the cover letter now."""
     output_path = OUTPUT_DIR / filename
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_path))
+
+    public_path = mirror_to_public(output_path)
+    if public_path:
+        log.info("cover letter mirrored to %s", public_path)
 
     return output_path, text

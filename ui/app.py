@@ -24,7 +24,7 @@ load_dotenv(ROOT / ".env")
 import os
 
 from src import db
-from src.generate.resume import generate_resume
+from src.generate.resume import generate_resume, autogen_resume_if_missing, expected_resume_path
 from src.generate.cover_letter import generate_cover_letter
 from src.scrapers.runner import run_all_sync
 from src.enrichment.prefilter import prefilter as run_prefilter
@@ -50,49 +50,17 @@ SPONSORSHIP_BADGES = {
     "unknown": ("❓", "Sponsorship unclear"),
 }
 
-CARD_CSS = """
-<style>
-  .jia-card {
-    border: 1px solid rgba(128,128,128,0.25);
-    border-radius: 12px;
-    padding: 14px 16px;
-    height: 100%;
-    background: rgba(255,255,255,0.02);
-  }
-  .jia-card .row {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  }
-  .jia-card .title {
-    font-weight: 600; font-size: 15px; line-height: 1.3;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-    overflow: hidden; text-overflow: ellipsis; min-height: 38px;
-  }
-  .jia-card .meta { color: rgba(160,160,160,1); font-size: 12px; margin-top: 4px; }
-  .jia-card .pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; min-height: 24px; }
-  .jia-pill {
-    display: inline-block; padding: 2px 8px; border-radius: 999px;
-    background: rgba(128,128,128,0.18); font-size: 11px; color: inherit;
-  }
-  .jia-rationale {
-    font-size: 12px; color: rgba(180,180,180,1); margin-top: 10px;
-    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-    overflow: hidden; text-overflow: ellipsis; min-height: 48px;
-  }
-  .jia-score {
-    width: 44px; height: 44px; border-radius: 50%; color: white;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 16px; flex-shrink: 0;
-  }
-  .jia-tier {
-    display: inline-block; padding: 2px 8px; border-radius: 6px;
-    color: white; font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
-  }
-  .jia-applied {
-    display: inline-block; padding: 2px 8px; border-radius: 6px;
-    background: #10b981; color: white; font-size: 10px; font-weight: 700;
-  }
-</style>
-"""
+TIER_EMOJI = {
+    "strong": "🟢 strong",
+    "possible": "🟡 possible",
+    "stretch": "🟠 stretch",
+    "skip": "⚫ skip",
+}
+SPONSORSHIP_EMOJI = {
+    "offered": "✅",
+    "denied": "❌",
+    "unknown": "❓",
+}
 
 
 def score_color(score):
@@ -112,53 +80,6 @@ def score_label(score):
     if score is None or pd.isna(score):
         return "—"
     return str(int(score))
-
-
-def render_card_html(job: dict) -> str:
-    score = job.get("score_total")
-    color = score_color(score)
-    tier = (job.get("tier") or "").lower()
-    tier_color = TIER_COLORS.get(tier, "#6b7280")
-    tier_label = TIER_LABELS.get(tier, "UNSCORED")
-
-    pills = []
-    sp_key = job.get("sponsorship_status") or "unknown"
-    if sp_key in SPONSORSHIP_BADGES:
-        emoji, text = SPONSORSHIP_BADGES[sp_key]
-        pills.append(f'<span class="jia-pill">{emoji} {text}</span>')
-    if job.get("salary_min") and job.get("salary_max"):
-        try:
-            pills.append(
-                f'<span class="jia-pill">💰 ${int(job["salary_min"]):,}-${int(job["salary_max"]):,}</span>'
-            )
-        except Exception:
-            pass
-    if job.get("remote"):
-        pills.append('<span class="jia-pill">🏠 Remote</span>')
-    if job.get("posted_at"):
-        pills.append(f'<span class="jia-pill">📅 {str(job["posted_at"])[:10]}</span>')
-    if job.get("applied"):
-        pills.append('<span class="jia-applied">✓ APPLIED</span>')
-
-    rationale = (job.get("score_rationale") or "").replace("<", "&lt;").replace(">", "&gt;")
-    title = (job.get("title") or "").replace("<", "&lt;").replace(">", "&gt;")
-    company = (job.get("company") or "").replace("<", "&lt;").replace(">", "&gt;")
-    location = (job.get("location") or "").replace("<", "&lt;").replace(">", "&gt;")
-    source = (job.get("source") or "").replace("<", "&lt;").replace(">", "&gt;")
-
-    return f"""
-    <div class="jia-card">
-      <div class="row">
-        <div class="jia-score" style="background:{color};">{score_label(score)}</div>
-        <span class="jia-tier" style="background:{tier_color};">{tier_label}</span>
-      </div>
-      <div class="title" style="margin-top:10px;">{title}</div>
-      <div class="meta"><b>{company}</b> · {location}</div>
-      <div class="meta">🌐 {source}</div>
-      <div class="pills">{''.join(pills)}</div>
-      <div class="jia-rationale">{rationale or '&nbsp;'}</div>
-    </div>
-    """
 
 
 @st.cache_data(ttl=30)
@@ -283,6 +204,7 @@ def run_pipeline(do_scrape: bool, do_prefilter: bool, do_score: bool, score_limi
                 st.write(f"🤖 Scoring {len(pending)} jobs with `{model}`...")
                 client = make_client()
                 scored = 0
+                auto_queued = 0
                 progress = st.progress(0.0, text="0 scored")
                 for idx, j in enumerate(pending, start=1):
                     result = score_job(
@@ -300,9 +222,24 @@ def run_pipeline(do_scrape: bool, do_prefilter: bool, do_score: bool, score_limi
                         })
                         db.update_score(j["hash"], total, breakdown, result.get("rationale", ""), tier)
                         scored += 1
+                        if (
+                            tier == "strong" and total >= 80
+                            and auto_queued < AUTO_RESUME_CAP_PER_CYCLE
+                        ):
+                            loc = j.get("location") or ""
+                            if not expected_resume_path(j["title"], j["company"], loc).exists():
+                                submit_generation(
+                                    "resume", j["title"], j["company"], j["description"] or ""
+                                )
+                                auto_queued += 1
                     progress.progress(idx / len(pending), text=f"{scored} scored / {idx} attempted")
                 summary["scored"] = scored
                 st.write(f"✅ Scored {scored}/{len(pending)} jobs")
+                if auto_queued:
+                    st.write(
+                        f"📝 Auto-queued {auto_queued} resume(s) for strong fits — "
+                        "see the **🛠️ Generations** sidebar tray."
+                    )
 
         status.update(label="Pipeline complete", state="complete", expanded=False)
 
@@ -317,12 +254,17 @@ _AUTO_STATE: dict | None = None
 _AUTO_THREAD: threading.Thread | None = None
 _AUTO_LOCK = threading.Lock()
 
+# Hard ceiling on auto-resume generation per cycle. Keeps Sonnet cost bounded
+# even if a single scrape surfaces dozens of strong fits at once. Override
+# via AUTO_RESUME_CAP_PER_CYCLE in .env.
+AUTO_RESUME_CAP_PER_CYCLE = int(os.environ.get("AUTO_RESUME_CAP_PER_CYCLE", "5"))
+
 
 def _run_pipeline_headless(score_limit: int) -> dict:
     """Same logic as run_pipeline() but with no Streamlit UI calls.
     Safe to call from a background thread.
     """
-    out = {"new": 0, "skipped": 0, "prefilter_pass": 0, "scored": 0, "error": None}
+    out = {"new": 0, "skipped": 0, "prefilter_pass": 0, "scored": 0, "auto_resumes": 0, "error": None}
     try:
         db.init_db()
         jobs = run_all_sync()
@@ -357,35 +299,56 @@ def _run_pipeline_headless(score_limit: int) -> dict:
                     })
                     db.update_score(j["hash"], total, breakdown, result.get("rationale", ""), tier)
                     out["scored"] += 1
+                    if (
+                        tier == "strong" and total >= 80
+                        and out["auto_resumes"] < AUTO_RESUME_CAP_PER_CYCLE
+                    ):
+                        path = autogen_resume_if_missing(
+                            j["title"], j["company"], j["description"] or "",
+                            location=j.get("location") or "",
+                        )
+                        if path:
+                            out["auto_resumes"] += 1
     except Exception as e:
         out["error"] = str(e)
     return out
 
 
 def _autoscrape_loop(state: dict):
-    """Daemon loop: wakes every 5s, runs pipeline when interval has elapsed."""
+    """Daemon loop: wakes every 5s, runs pipeline when interval has elapsed.
+
+    All reads/writes of `state` are guarded by `_AUTO_LOCK` so concurrent
+    Streamlit reruns can't tear values mid-update.
+    """
     while True:
         try:
-            now = time.time()
-            should_run = (
-                state["enabled"]
-                and not state["in_progress"]
-                and (state["last_run_at"] is None
-                     or now - state["last_run_at"] >= state["interval_seconds"])
-            )
+            with _AUTO_LOCK:
+                now = time.time()
+                should_run = (
+                    state["enabled"]
+                    and not state["in_progress"]
+                    and (state["last_run_at"] is None
+                         or now - state["last_run_at"] >= state["interval_seconds"])
+                )
+                score_limit = state["score_limit"]
+                if should_run:
+                    state["in_progress"] = True
+                    state["last_started_at"] = time.time()
             if should_run:
-                state["in_progress"] = True
-                state["last_started_at"] = time.time()
-                summary = _run_pipeline_headless(state["score_limit"])
-                state["last_run_summary"] = summary
-                state["last_error"] = summary.get("error")
-                state["last_run_at"] = time.time()
-                state["next_run_at"] = state["last_run_at"] + state["interval_seconds"]
-                state["in_progress"] = False
-                state["run_count"] += 1
+                # Run the pipeline OUTSIDE the lock — it can take minutes and
+                # we don't want to block the UI fragment from reading status.
+                summary = _run_pipeline_headless(score_limit)
+                with _AUTO_LOCK:
+                    state["last_run_summary"] = summary
+                    state["last_error"] = summary.get("error")
+                    state["last_run_at"] = time.time()
+                    state["next_run_at"] = state["last_run_at"] + state["interval_seconds"]
+                    state["in_progress"] = False
+                    state["run_count"] += 1
         except Exception as e:
-            state["last_error"] = f"loop: {e}"
-            state["in_progress"] = False
+            with _AUTO_LOCK:
+                state["last_error"] = f"loop: {e}"
+                state["in_progress"] = False
         time.sleep(5)
 
 
@@ -429,24 +392,30 @@ def _fmt_relative(ts: float | None) -> str:
 
 @st.fragment(run_every=5)
 def render_autoscrape_controls():
-    """Auto-refreshing sidebar panel: toggle, interval, status. Caller wraps with `with st.sidebar`."""
+    """Auto-refreshing sidebar panel: toggle, interval, status. Caller wraps with `with st.sidebar`.
+
+    Snapshot the daemon state under the lock before rendering so values are
+    consistent for one render pass; write back UI changes under the lock.
+    """
     state = get_autoscrape_state()
+    with _AUTO_LOCK:
+        snap = dict(state)
+
     st.markdown("### 🔁 Auto-scrape")
 
     enabled = st.toggle(
         "Enabled",
-        value=state["enabled"],
+        value=snap["enabled"],
         key="auto_enabled",
         help="When on, the pipeline runs in the background on the chosen interval.",
     )
-    state["enabled"] = enabled
 
     interval_choices = {
         "15 min": 900, "30 min": 1800, "1 hour": 3600,
         "3 hours": 10800, "6 hours": 21600, "12 hours": 43200,
     }
     current_label = next(
-        (k for k, v in interval_choices.items() if v == state["interval_seconds"]),
+        (k for k, v in interval_choices.items() if v == snap["interval_seconds"]),
         "30 min",
     )
     label = st.selectbox(
@@ -454,35 +423,41 @@ def render_autoscrape_controls():
         index=list(interval_choices.keys()).index(current_label),
         key="auto_interval",
     )
-    state["interval_seconds"] = interval_choices[label]
+    new_interval = interval_choices[label]
 
-    state["score_limit"] = st.number_input(
+    new_score_limit = st.number_input(
         "Score limit per run", min_value=10, max_value=500,
-        value=state["score_limit"], step=10, key="auto_score_limit",
+        value=snap["score_limit"], step=10, key="auto_score_limit",
         help="LLM-score at most this many new prefilter survivors per cycle. Caps cost.",
     )
 
-    if state["in_progress"]:
-        elapsed = int(time.time() - (state["last_started_at"] or time.time()))
+    with _AUTO_LOCK:
+        state["enabled"] = enabled
+        state["interval_seconds"] = new_interval
+        state["score_limit"] = int(new_score_limit)
+
+    if snap["in_progress"]:
+        elapsed = int(time.time() - (snap["last_started_at"] or time.time()))
         st.info(f"⏳ Running... ({elapsed}s)")
-    elif state["enabled"]:
+    elif snap["enabled"]:
         st.caption(
-            f"Last run: {_fmt_relative(state['last_run_at'])} · "
-            f"Next: {_fmt_relative(state['next_run_at'])}"
+            f"Last run: {_fmt_relative(snap['last_run_at'])} · "
+            f"Next: {_fmt_relative(snap['next_run_at'])}"
         )
     else:
         st.caption("Off — flip the toggle to start.")
 
-    last = state["last_run_summary"]
+    last = snap["last_run_summary"]
     if last:
         st.caption(
             f"Last cycle: +{last.get('new', 0)} new · "
             f"{last.get('skipped', 0)} dup · "
             f"{last.get('prefilter_pass', 0)} pf-pass · "
-            f"{last.get('scored', 0)} scored"
+            f"{last.get('scored', 0)} scored · "
+            f"📝 {last.get('auto_resumes', 0)} resumes"
         )
-    if state["last_error"]:
-        st.error(state["last_error"], icon="❌")
+    if snap["last_error"]:
+        st.error(snap["last_error"], icon="❌")
 
 
 def render_pipeline_controls(df_empty: bool):
@@ -537,8 +512,7 @@ def render_sidebar(df: pd.DataFrame) -> dict:
 
     company_search = st.sidebar.text_input("Search company / title").strip().lower()
 
-    columns_per_row = st.sidebar.select_slider("Columns", options=[2, 3, 4], value=3)
-    page_size = st.sidebar.select_slider("Per page", options=[12, 24, 48, 96], value=24)
+    page_size = st.sidebar.select_slider("Per page", options=[25, 50, 100, 250, 500], value=50)
 
     st.sidebar.markdown("---")
     st.sidebar.caption(f"Total in DB: {len(df)} jobs")
@@ -551,7 +525,6 @@ def render_sidebar(df: pd.DataFrame) -> dict:
         "sponsorship": selected_sponsorship,
         "applied_filter": applied_filter,
         "search": company_search,
-        "columns": columns_per_row,
         "page_size": page_size,
     }
 
@@ -588,8 +561,7 @@ def apply_filters(df: pd.DataFrame, f: dict) -> pd.DataFrame:
     return out
 
 
-@st.dialog("Job details", width="large")
-def job_dialog(job: dict):
+def render_job_details(job: dict):
     score = job.get("score_total")
     tier = (job.get("tier") or "").lower()
     tier_color = TIER_COLORS.get(tier, "#6b7280")
@@ -675,6 +647,7 @@ def job_dialog(job: dict):
     )
     if notes != (job.get("notes") or ""):
         db.set_notes(job_hash, notes)
+        st.cache_data.clear()
 
     with st.expander("Job description", expanded=False):
         if job.get("description"):
@@ -698,24 +671,64 @@ def job_dialog(job: dict):
             st.rerun()
 
 
-def render_grid(df: pd.DataFrame, columns_per_row: int):
-    st.markdown(CARD_CSS, unsafe_allow_html=True)
-    rows = [df.iloc[i : i + columns_per_row] for i in range(0, len(df), columns_per_row)]
-    for chunk in rows:
-        cols = st.columns(columns_per_row, gap="medium")
-        for i, (_, row) in enumerate(chunk.iterrows()):
-            job = row.to_dict()
-            with cols[i]:
-                st.markdown(render_card_html(job), unsafe_allow_html=True)
-                btn_l, btn_r = st.columns([0.6, 0.4])
-                with btn_l:
-                    if st.button(
-                        "Details", key=f"open_{job['hash']}", use_container_width=True
-                    ):
-                        job_dialog(job)
-                with btn_r:
-                    if job.get("url"):
-                        st.link_button("Open", job["url"], use_container_width=True)
+def _build_table_view(df: pd.DataFrame) -> pd.DataFrame:
+    """Reshape the raw jobs DataFrame into a compact display DataFrame."""
+    out = pd.DataFrame()
+    out["score"] = df["score_total"].fillna(0).astype(int)
+    out["tier"] = df["tier"].fillna("").map(lambda t: TIER_EMOJI.get(t, "—"))
+    out["title"] = df["title"]
+    out["company"] = df["company"]
+    out["location"] = df["location"].fillna("")
+
+    def _salary(row):
+        lo, hi = row.get("salary_min"), row.get("salary_max")
+        try:
+            if lo and hi:
+                return f"${int(lo):,}-${int(hi):,}"
+        except Exception:
+            pass
+        return ""
+
+    out["salary"] = df.apply(_salary, axis=1)
+    out["sponsor"] = df["sponsorship_status"].fillna("unknown").map(
+        lambda s: SPONSORSHIP_EMOJI.get(s, "")
+    )
+    out["posted"] = df["posted_at"].fillna("").astype(str).str[:10]
+    out["source"] = df["source"]
+    out["applied"] = df["applied"].astype(bool)
+    out["url"] = df["url"]
+    return out
+
+
+def render_table(df: pd.DataFrame) -> int | None:
+    """Renders the jobs table. Returns the iloc-index of the selected row, or None."""
+    view = _build_table_view(df)
+    event = st.dataframe(
+        view,
+        column_config={
+            "score": st.column_config.ProgressColumn(
+                "Score", format="%d", min_value=0, max_value=100, width="small"
+            ),
+            "tier": st.column_config.TextColumn("Tier", width="small"),
+            "title": st.column_config.TextColumn("Title", width="large"),
+            "company": st.column_config.TextColumn("Company", width="medium"),
+            "location": st.column_config.TextColumn("Location", width="medium"),
+            "salary": st.column_config.TextColumn("Salary", width="small"),
+            "sponsor": st.column_config.TextColumn("Visa", width="small", help="Sponsorship status"),
+            "posted": st.column_config.TextColumn("Posted", width="small"),
+            "source": st.column_config.TextColumn("Source", width="small"),
+            "applied": st.column_config.CheckboxColumn("Applied", width="small", disabled=True),
+            "url": st.column_config.LinkColumn("Open", display_text="↗", width="small"),
+        },
+        hide_index=True,
+        use_container_width=True,
+        height=560,
+        selection_mode="single-row",
+        on_select="rerun",
+        key="jobs_table",
+    )
+    rows = event.selection.rows if event.selection else []
+    return rows[0] if rows else None
 
 
 def main():
@@ -743,8 +756,7 @@ def main():
         st.warning("No jobs match the current filters.")
         return
 
-    page_size = filters.get("page_size", 24)
-    columns_per_row = filters.get("columns", 3)
+    page_size = filters.get("page_size", 50)
     total_pages = max(1, (len(filtered) + page_size - 1) // page_size)
     page = st.number_input(
         f"Page (of {total_pages})",
@@ -754,9 +766,17 @@ def main():
         step=1,
     )
     start = (page - 1) * page_size
-    page_df = filtered.iloc[start : start + page_size]
+    page_df = filtered.iloc[start : start + page_size].reset_index(drop=True)
 
-    render_grid(page_df, columns_per_row)
+    selected_idx = render_table(page_df)
+
+    if selected_idx is not None and 0 <= selected_idx < len(page_df):
+        st.markdown("---")
+        job = page_df.iloc[selected_idx].to_dict()
+        with st.container(border=True):
+            render_job_details(job)
+    else:
+        st.caption("👉 Click a row above to see details and generate resume / cover letter.")
 
 
 if __name__ == "__main__":

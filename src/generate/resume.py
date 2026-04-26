@@ -20,23 +20,38 @@ from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from ..llm import chat
+from . import mirror_to_public
 
 log = logging.getLogger(__name__)
 
-# Skill file path on Dheeraj's machine. If not present, we use a built-in
-# fallback profile (still locked to his real experience).
+# Prefer the in-project copy so the skill travels with the repo.
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 SKILL_PATH_CANDIDATES = [
+    PROJECT_ROOT / "config" / "skills" / "dheeraj-resume-generator" / "SKILL.md",
     Path.home() / ".claude" / "skills" / "dheeraj-resume-generator" / "SKILL.md",
     Path("/mnt/skills/user/dheeraj-resume-generator/SKILL.md"),
 ]
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "data" / "exports"
+OUTPUT_DIR = PROJECT_ROOT / "data" / "exports"
 
 
 def _load_skill() -> str:
-    for p in SKILL_PATH_CANDIDATES:
-        if p.exists():
-            return p.read_text()
+    """Load SKILL.md and inline its references/ files so the model has the full
+    context (the SKILL document references `references/profile-{ic,em}.md` by
+    relative path, which the model cannot resolve on its own)."""
+    for skill_path in SKILL_PATH_CANDIDATES:
+        if skill_path.exists():
+            content = skill_path.read_text()
+            refs_dir = skill_path.parent / "references"
+            if refs_dir.is_dir():
+                for ref in sorted(refs_dir.glob("*.md")):
+                    content += (
+                        f"\n\n============================================================\n"
+                        f"REFERENCE FILE: references/{ref.name}\n"
+                        f"============================================================\n"
+                        f"{ref.read_text()}"
+                    )
+            return content
     log.warning("resume skill file not found at any candidate path; using built-in fallback")
     return _FALLBACK_SKILL
 
@@ -236,17 +251,58 @@ def _build_docx(payload: dict, output_path: Path) -> None:
     doc.save(str(output_path))
 
 
-def generate_resume(jd_title: str, jd_company: str, jd_text: str, model: Optional[str] = None) -> tuple[Path, dict]:
+def expected_resume_path(jd_title: str, jd_company: str, location: str = "") -> Path:
+    """Filename that `generate_resume` will write to.
+
+    Includes a short location-derived suffix when provided so the same title at
+    the same company in two cities doesn't collide.
+    """
+    safe_t = re.sub(r"[^A-Za-z0-9]+", "_", jd_title).strip("_")
+    safe_c = re.sub(r"[^A-Za-z0-9]+", "_", jd_company).strip("_")
+    safe_l = re.sub(r"[^A-Za-z0-9]+", "_", location).strip("_")[:30]
+    suffix = f"_{safe_l}" if safe_l else ""
+    return OUTPUT_DIR / f"Dheeraj_Sampath_{safe_t}_{safe_c}{suffix}.docx"
+
+
+def generate_resume(
+    jd_title: str, jd_company: str, jd_text: str,
+    model: Optional[str] = None, location: str = "",
+) -> tuple[Path, dict]:
     """Returns (path_to_docx, tailoring_report_dict)."""
     model = model or os.environ.get("GENERATION_MODEL", "anthropic/claude-sonnet-4.5")
 
     payload = _generate_structured(model, jd_title, jd_company, jd_text)
     payload = _scrub_recursive(payload)
 
-    safe_title = re.sub(r"[^A-Za-z0-9]+", "_", jd_title).strip("_")
-    safe_company = re.sub(r"[^A-Za-z0-9]+", "_", jd_company).strip("_")
-    filename = f"Dheeraj_Sampath_{safe_title}_{safe_company}.docx"
-    output_path = OUTPUT_DIR / filename
+    output_path = expected_resume_path(jd_title, jd_company, location)
     _build_docx(payload, output_path)
 
+    public_path = mirror_to_public(output_path)
+    if public_path:
+        log.info("resume mirrored to %s", public_path)
+
     return output_path, payload.get("tailoring_report", {})
+
+
+def autogen_resume_if_missing(
+    jd_title: str, jd_company: str, jd_text: str, location: str = ""
+) -> Optional[Path]:
+    """Generate a resume only if one for this title+company+location doesn't exist.
+
+    Returns the resume path (existing or freshly generated), or None on failure.
+    Safe to call from any thread — sync, no Streamlit dependencies.
+    """
+    expected = expected_resume_path(jd_title, jd_company, location)
+    if expected.exists():
+        log.info("resume exists, skipping autogen: %s", expected.name)
+        return expected
+    try:
+        path, _ = generate_resume(jd_title, jd_company, jd_text, location=location)
+        log.info("auto-generated resume: %s", path.name)
+        return path
+    except Exception as e:
+        log.warning(
+            "autogen resume failed for %s @ %s (%s): %s",
+            jd_title, jd_company, location, e,
+        )
+        return None

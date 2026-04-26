@@ -33,6 +33,7 @@ from .enrichment.prefilter import prefilter as run_prefilter
 from .enrichment.llm_scorer import score_job, make_client, compute_tier
 from .scrapers.runner import run_all_sync
 from .notify import notify_strong_fits as do_notify
+from .generate.resume import autogen_resume_if_missing
 
 console = Console()
 
@@ -89,7 +90,9 @@ def score(limit: int):
     model = os.environ.get("SCORING_MODEL", "anthropic/claude-haiku-4.5")
     console.print(f"[cyan]scoring {len(pending)} jobs with {model}...[/]")
 
+    auto_resume_cap = int(os.environ.get("AUTO_RESUME_CAP_PER_CYCLE", "5"))
     scored = 0
+    auto_resumes = 0
     for j in pending:
         result = score_job(
             client, model,
@@ -107,8 +110,17 @@ def score(limit: int):
         rationale = result.get("rationale", "")
         db.update_score(j["hash"], total, breakdown, rationale, tier)
         scored += 1
+        if tier == "strong" and total >= 80 and auto_resumes < auto_resume_cap:
+            path = autogen_resume_if_missing(
+                j["title"], j["company"], j["description"] or "",
+                location=j.get("location") or "",
+            )
+            if path:
+                auto_resumes += 1
 
     console.print(f"[green]scored {scored} jobs[/]")
+    if auto_resumes:
+        console.print(f"[green]auto-generated {auto_resumes} resume(s) for strong fits[/]")
 
 
 @cli.command()

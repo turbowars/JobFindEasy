@@ -94,13 +94,40 @@ def upsert_job(job: Job) -> bool:
 
 
 def upsert_many(jobs: Iterable[Job]) -> tuple[int, int]:
-    """Returns (new_inserted, skipped_duplicates)."""
-    new, skipped = 0, 0
-    for j in jobs:
-        if upsert_job(j):
-            new += 1
-        else:
-            skipped += 1
+    """Returns (new_inserted, skipped_duplicates).
+
+    Batched into a single transaction with executemany — at 6k rows this is
+    ~30x faster than per-row connections.
+    """
+    rows = [
+        (
+            j.hash, j.source, j.company, j.title, j.location, j.url,
+            j.description, j.posted_at, j.salary_min, j.salary_max,
+            int(j.remote) if j.remote is not None else None,
+            j.sponsorship_status, int(j.prefilter_passed),
+            j.prefilter_reason, j.score_total, j.score_breakdown,
+            j.score_rationale, j.tier, int(j.applied),
+            j.applied_at, j.notes, j.scraped_at,
+        )
+        for j in jobs
+    ]
+    if not rows:
+        return 0, 0
+    with conn() as c:
+        before = c.total_changes
+        c.executemany(
+            """
+            INSERT OR IGNORE INTO jobs (
+                hash, source, company, title, location, url, description,
+                posted_at, salary_min, salary_max, remote, sponsorship_status,
+                prefilter_passed, prefilter_reason, score_total, score_breakdown,
+                score_rationale, tier, applied, applied_at, notes, scraped_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        new = c.total_changes - before
+    skipped = len(rows) - new
     return new, skipped
 
 
