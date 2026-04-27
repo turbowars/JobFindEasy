@@ -155,11 +155,9 @@ def _filtered_df(filters: dict):
         df = df[df["score_total"].fillna(0) >= filters["min_score"]]
     if filters.get("sponsor"):
         df = df[df["sponsorship_status"].isin(filters["sponsor"])]
-    applied = filters.get("applied")
-    if applied == "yes":
-        df = df[df["applied"] == 1]
-    elif applied == "no":
-        df = df[df["applied"] == 0]
+    statuses = filters.get("status")
+    if statuses:
+        df = df[df["status"].isin(statuses)]
     if filters.get("q"):
         q = filters["q"].lower()
         df = df[
@@ -196,57 +194,15 @@ def index(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Routes — HTMX partials (filled in over Phases 2-4)
+# Routes — HTMX partials
 # ---------------------------------------------------------------------------
-
-@app.get("/partials/table", response_class=HTMLResponse)
-def partial_table(
-    request: Request,
-    page: int = 1,
-    page_size: int = 50,
-    show_rejects: bool = False,
-    source: list[str] = Query(default=[]),
-    tier: list[str] = Query(default=[]),
-    min_score: int = 0,
-    sponsor: list[str] = Query(default=[]),
-    applied: str = "all",  # "all" | "yes" | "no"
-    q: str = "",
-):
-    filters = {
-        "show_rejects": show_rejects,
-        "source": source,
-        "tier": tier,
-        "min_score": min_score,
-        "sponsor": sponsor,
-        "applied": applied,
-        "q": q.strip(),
-    }
-    df = _filtered_df(filters)
-    total = len(df)
-    pages = max(1, (total + page_size - 1) // page_size)
-    page = max(1, min(page, pages))
-    start = (page - 1) * page_size
-    page_df = df.iloc[start : start + page_size]
-    rows = page_df.to_dict(orient="records") if not page_df.empty else []
-    return templates.TemplateResponse(
-        request,
-        "partials/table.html",
-        {
-            "rows": rows,
-            "page": page,
-            "pages": pages,
-            "page_size": page_size,
-            "total": total,
-            "TIER_MAP": TIER_MAP,
-            "SPONSOR_MAP": SPONSOR_MAP,
-            "score_color": _score_color,
-            "filters": filters,
-        },
-    )
-
 
 @app.get("/partials/detail/{job_hash}", response_class=HTMLResponse)
 def partial_detail(request: Request, job_hash: str):
+    from src.status import (
+        STATUSES, STATUS_LABEL, STATUS_GLYPH,
+        CLOSED_REASONS, GHOST_SWEEP_DAYS,
+    )
     job = db.get_job(job_hash)
     if not job:
         raise HTTPException(404, "job not found")
@@ -256,6 +212,15 @@ def partial_detail(request: Request, job_hash: str):
     job["_score_breakdown"] = (
         json.loads(job["score_breakdown"]) if job.get("score_breakdown") else None
     )
+    # Days since the last status transition (used for "applied 3 days ago,
+    # auto-ghosts in 18 days" hint).
+    days_since_status = None
+    if job.get("status_at"):
+        try:
+            t = datetime.fromisoformat(job["status_at"])
+            days_since_status = max(0, int((datetime.utcnow() - t).total_seconds() // 86400))
+        except Exception:
+            pass
     return templates.TemplateResponse(
         request,
         "partials/detail.html",
@@ -264,6 +229,12 @@ def partial_detail(request: Request, job_hash: str):
             "TIER_MAP": TIER_MAP,
             "SPONSOR_MAP": SPONSOR_MAP,
             "score_color": _score_color,
+            "STATUSES": STATUSES,
+            "STATUS_LABEL": STATUS_LABEL,
+            "STATUS_GLYPH": STATUS_GLYPH,
+            "CLOSED_REASONS": CLOSED_REASONS,
+            "GHOST_SWEEP_DAYS": GHOST_SWEEP_DAYS,
+            "days_since_status": days_since_status,
         },
     )
 
@@ -353,34 +324,37 @@ def partial_generations(request: Request):
 
 @app.get("/partials/badges", response_class=HTMLResponse)
 def partial_badges(request: Request):
-    """Live count badges in the sidebar — polled every 5s."""
+    """Live count badges + pipeline counts in the sidebar — polled every 5s."""
+    from src.status import STATUSES, STATUS_LABEL, STATUS_GLYPH
     df = db.to_dataframe()
     if df.empty:
-        return HTMLResponse(
-            '<div id="badges"><small>0 jobs</small></div>'
-        )
+        return HTMLResponse('<div id="badges"><small>0 jobs</small></div>')
     strong = int((df["score_total"].fillna(0) >= 80).sum())
-    applied = int(df["applied"].sum())
-    pending_followup = 0
-    # Follow-up count: applied >= 7 days ago, not in interview/offer/rejected stages.
-    # For now (binary applied), count applied jobs older than 7 days.
-    if "applied_at" in df.columns:
-        cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
-        pending_followup = int(
-            (
-                (df["applied"] == 1)
-                & (df["applied_at"].fillna("") < cutoff)
-                & (df["applied_at"].fillna("") != "")
-            ).sum()
-        )
+    counts = db.get_status_counts()
+    # Follow-up: applied >= 7 days ago, status still 'applied' (not yet
+    # advanced to interviewing/offer or auto-ghosted).
+    cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
+    pending_followup = int(
+        (
+            (df["status"] == "applied")
+            & (df["status_at"].fillna("") < cutoff)
+            & (df["status_at"].fillna("") != "")
+        ).sum()
+    )
+    pipeline = [
+        {"key": s, "label": STATUS_LABEL[s], "glyph": STATUS_GLYPH[s],
+         "count": counts.get(s, 0)}
+        for s in STATUSES if s != "new"
+    ]
     return templates.TemplateResponse(
         request,
         "partials/badges.html",
         {
             "strong": strong,
-            "applied": applied,
+            "applied": counts.get("applied", 0),
             "pending_followup": pending_followup,
             "total": len(df),
+            "pipeline": pipeline,
         },
     )
 
@@ -413,15 +387,34 @@ def partial_autoscrape(request: Request):
 # Routes — actions (mutations)
 # ---------------------------------------------------------------------------
 
-@app.post("/actions/applied/{job_hash}")
-def action_applied(job_hash: str, applied: str = Form(...)):
-    """Toggle applied. Form value 'on' / 'off'."""
+@app.post("/actions/status/{job_hash}")
+def action_status(
+    job_hash: str,
+    status: str = Form(...),
+    closed_reason: str = Form(""),
+):
+    """Generic status transition. closed_reason is only honored when
+    status='closed' (server clears it for any other status)."""
     job = db.get_job(job_hash)
     if not job:
         raise HTTPException(404, "job not found")
-    new = applied == "on"
-    db.set_applied(job_hash, new)
+    try:
+        db.set_status(job_hash, status, closed_reason or None)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return Response(status_code=204)
+
+
+@app.post("/actions/apply/{job_hash}")
+def action_apply(job_hash: str):
+    """Convenience: flip status to 'applying'. The Claude-for-Chrome
+    session-brief generation hooks here in a follow-up PR; for now this
+    just records that you've started the apply flow."""
+    job = db.get_job(job_hash)
+    if not job:
+        raise HTTPException(404, "job not found")
+    db.set_status(job_hash, "applying")
+    return JSONResponse({"ok": True, "url": job.get("url") or ""})
 
 
 @app.post("/actions/notes/{job_hash}")
@@ -611,6 +604,12 @@ def api_jobs_json(show_rejects: bool = False):
         ascending=[False, False],
         na_position="last",
     )
+    def _clean(v):
+        # pandas turns NULL text columns into float NaN; json.dumps rejects them.
+        if v is None: return None
+        if isinstance(v, float) and v != v: return None
+        return v
+
     out = []
     for r in df.to_dict(orient="records"):
         score = r.get("score_total")
@@ -627,10 +626,96 @@ def api_jobs_json(show_rejects: bool = False):
             "sponsorship": r.get("sponsorship_status") or "unknown",
             "posted": (str(r.get("posted_at") or ""))[:10],
             "source": r.get("source") or "",
-            "applied": bool(r.get("applied")),
+            "status": _clean(r.get("status")) or "new",
+            "status_at": _clean(r.get("status_at")),
+            "closed_reason": _clean(r.get("closed_reason")),
             "url": r.get("url") or "",
         })
     return JSONResponse(out)
+
+
+@app.get("/api/claude-prompt.txt", response_class=Response)
+def api_claude_prompt():
+    """Self-contained prompt to paste into the Claude-for-Chrome sidebar.
+
+    Embeds the active queue (status IN shortlisted, applying) so Claude
+    has the URLs and hashes it needs to work through the list and call
+    back to mark each row applied via /actions/status/{hash}.
+    """
+    df = db.to_dataframe()
+    if df.empty:
+        queue: list[dict] = []
+    else:
+        active = df[df["status"].isin(["shortlisted", "applying"])].copy()
+        active = active.sort_values(
+            by=["score_total", "scraped_at"],
+            ascending=[False, False],
+            na_position="last",
+        )
+        queue = active.to_dict(orient="records")
+
+    lines: list[str] = []
+    lines.append("You are operating inside Dheeraj's personal job-hunt dashboard.")
+    lines.append("Dashboard URL: http://127.0.0.1:8826")
+    lines.append("")
+    lines.append("This is Dheeraj's personal job hunt dashboard. Your job is to")
+    lines.append("apply to these jobs and ALERT HIM BEFORE SUBMITTING so he can")
+    lines.append("verify the information. Never submit without explicit confirmation.")
+    lines.append("")
+    lines.append("## About Dheeraj")
+    lines.append("- US-based, on H-1B (sponsorship REQUIRED — if a posting denies sponsorship, skip it).")
+    lines.append("- Targeting: Engineering Manager / Staff Frontend / Frontend Platform leadership roles.")
+    lines.append("- Email: turbowars@gmail.com")
+    lines.append("- 14+ years engineering, last role: Engineering Manager. Strong frontend platform / design-systems / micro-frontend background.")
+    lines.append("- Comp expectation: market for senior EM/Staff in the US (use 'competitive' or '$220k+' if asked; defer to recruiter on specifics).")
+    lines.append("- No notice period — immediately available to join.")
+    lines.append("- Open to: Remote (US), Hybrid (Bay Area / NYC). Not relocating.")
+    lines.append("- Authorized to work in the US; requires H-1B transfer.")
+    lines.append("")
+    lines.append("## Workflow — repeat for every job in the queue below")
+    lines.append("")
+    lines.append("1. Click the apply link (URL provided per-job below).")
+    lines.append("2. Wait for the Simplify Chrome extension to autofill the form. Give it ~5–10 seconds; some forms take longer.")
+    lines.append("3. Verify the answers Simplify filled. If any are wrong, fix them.")
+    lines.append("4. Answer remaining form fields Simplify missed, using the context above. If you don't have an answer, ASK DHEERAJ before guessing.")
+    lines.append("5. ALERT DHEERAJ that this job is ready to submit. Show a summary of the form. Wait for explicit \"go ahead\" before clicking Submit.")
+    lines.append("6. After Dheeraj submits, mark this job applied by running the following in the JavaScript console:")
+    lines.append("")
+    lines.append('   fetch("http://127.0.0.1:8826/actions/status/HASH_HERE", {')
+    lines.append('     method: "POST",')
+    lines.append('     headers: { "Content-Type": "application/x-www-form-urlencoded" },')
+    lines.append('     body: "status=applied"')
+    lines.append("   });")
+    lines.append("")
+    lines.append("   Replace HASH_HERE with the hash from the job entry below.")
+    lines.append("7. Move to the next job in the queue. Continue until the list is empty.")
+    lines.append("")
+    lines.append("## Hard rules")
+    lines.append("- Never submit a form without Dheeraj's explicit \"go ahead\" reply.")
+    lines.append("- If a posting requires sponsorship denial, skip and tell Dheeraj why.")
+    lines.append("- If a question asks for something not in the context above, ASK before answering.")
+    lines.append("- File-upload widgets need Dheeraj's manual click — pause and tell him to attach the resume.")
+    lines.append("- The tailored .docx for each role lives in ~/Public/JobFindEasy/ on Dheeraj's machine; he attaches manually.")
+    lines.append("")
+    lines.append(f"## Queue ({len(queue)} job{'s' if len(queue) != 1 else ''})")
+    lines.append("")
+    if not queue:
+        lines.append("(empty — Dheeraj hasn't shortlisted any jobs yet. Tell him to shortlist some from the dashboard first.)")
+    else:
+        for i, j in enumerate(queue, start=1):
+            score = j.get("score_total")
+            score_str = f" [{int(score)}]" if score is not None and score == score else ""
+            loc = j.get("location") or ""
+            loc_str = f" · {loc}" if loc else ""
+            lines.append(f"[{i}] {j['title']} — {j['company']}{score_str}{loc_str}")
+            lines.append(f"    HASH: {j['hash']}")
+            lines.append(f"    URL:  {j.get('url') or '(no URL — search the company careers page)'}")
+            lines.append(f"    STATUS: {j.get('status')}")
+            lines.append("")
+    lines.append("Begin with job [1]. Good luck.")
+
+    body = "\n".join(lines)
+    return Response(content=body, media_type="text/plain; charset=utf-8")
 
 
 @app.get("/healthz")

@@ -55,21 +55,66 @@
     {% endif %}
   </div>
 
-  <!-- Top action bar -->
-  <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-base-300/40">
-    <sl-switch size="small"
-               data-applied-toggle
-               {{ 'checked' if job.applied else '' }}
-               hx-post="/actions/applied/{{ job.hash }}"
-               hx-trigger="sl-change"
-               hx-vals='js:{"applied": event.target.checked ? "on" : "off"}'
-               hx-swap="none">
-      <span class="text-xs font-medium">Applied</span>
-    </sl-switch>
+  {# ─── Status strip ─── #}
+  {% set current_status = job.status or 'new' %}
+  {% set current_idx = STATUSES.index(current_status) %}
+  <div class="pt-2 border-t border-base-300/40">
+    <div class="flex flex-wrap items-center gap-1" data-status-strip data-hash="{{ job.hash }}">
+      {% for s in STATUSES %}
+        {% set idx = loop.index0 %}
+        {% set state =
+              'current' if idx == current_idx
+              else ('past' if idx < current_idx else 'future') %}
+        {% if s != 'closed' %}
+          <button type="button"
+                  data-status-pill
+                  data-status="{{ s }}"
+                  class="status-pill status-{{ s }} state-{{ state }}"
+                  title="Set status: {{ STATUS_LABEL[s] }}">
+            <span class="status-glyph">{{ STATUS_GLYPH[s] }}</span>
+            <span class="status-label">{{ STATUS_LABEL[s] }}</span>
+          </button>
+        {% else %}
+          <sl-dropdown hoist>
+            <button type="button" slot="trigger"
+                    class="status-pill status-closed state-{{ state }}"
+                    title="Close with a reason">
+              <span class="status-glyph">{{ STATUS_GLYPH[s] }}</span>
+              <span class="status-label">
+                {% if current_status == 'closed' and job.closed_reason %}
+                  Closed · {{ job.closed_reason.replace('_', ' ') }}
+                {% else %}
+                  Closed
+                {% endif %}
+              </span>
+            </button>
+            <sl-menu data-closed-menu data-hash="{{ job.hash }}">
+              {% for r in CLOSED_REASONS %}
+                <sl-menu-item value="{{ r }}">{{ r.replace('_', ' ')|title }}</sl-menu-item>
+              {% endfor %}
+            </sl-menu>
+          </sl-dropdown>
+        {% endif %}
+      {% endfor %}
+    </div>
 
+    {% if current_status == 'applied' and days_since_status is not none %}
+      {% set remaining = GHOST_SWEEP_DAYS - days_since_status %}
+      <div class="text-[11px] text-ink-3 mt-1.5">
+        Applied {{ days_since_status }}d ago
+        {% if remaining > 0 %}· auto-ghosts in {{ remaining }}d{% else %}· will ghost on next sweep{% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  {# ─── Action bar ─── #}
+  <div class="flex flex-wrap items-center gap-2">
     {% if job.url %}
-      <sl-button variant="primary" size="small" href="{{ job.url }}" target="_blank" rel="noopener">
-        Open posting ↗
+      <sl-button variant="primary" size="small"
+                 data-action="apply-with-claude"
+                 data-hash="{{ job.hash }}"
+                 data-url="{{ job.url }}">
+        Apply with Claude ↗
       </sl-button>
     {% endif %}
 

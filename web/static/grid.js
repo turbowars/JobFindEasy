@@ -3,7 +3,7 @@
 // are all built in.
 //
 // Hooks back into HTMX for row click → /partials/detail/{hash} → swap into
-// #detail. Applied checkbox in-row writes through to /actions/applied/{hash}.
+// #detail. Status transitions happen in the detail pane's status strip.
 //
 // Theme: Quartz dark, recolored to match our 3-color palette via CSS vars
 // in app.css (.ag-theme-quartz-dark overrides).
@@ -61,36 +61,28 @@
       </span>`;
   }
 
-  // Applied checkbox — Shoelace <sl-checkbox> renders inside the AG Grid cell.
-  // The autoloader picks it up on insertion. We listen for `sl-change`.
-  function appliedCellRenderer(params) {
-    const checked = params.value ? "checked" : "";
-    return `
-      <sl-checkbox size="small"
-                   ${checked}
-                   data-hash="${params.data.hash}"
-                   onclick="event.stopPropagation()"
-                   style="--toggle-size:14px;"></sl-checkbox>`;
+  // Status chip — read-only in the grid; transitions happen in the detail
+  // pane's status strip. Distinction is glyph + opacity, not extra colors
+  // (3-color palette discipline).
+  const STATUS_GLYPHS = {
+    new: "○", shortlisted: "★", applying: "▶", applied: "✓",
+    interviewing: "⟳", offer: "◆", closed: "—",
+  };
+  const STATUS_LABELS = {
+    new: "New", shortlisted: "Shortlisted", applying: "Applying",
+    applied: "Applied", interviewing: "Interviewing", offer: "Offer",
+    closed: "Closed",
+  };
+  function statusCellRenderer(params) {
+    const s = params.value || "new";
+    const reason = params.data && params.data.closed_reason;
+    const label = (s === "closed" && reason)
+      ? `Closed · ${reason.replace(/_/g, " ")}`
+      : (STATUS_LABELS[s] || s);
+    return `<span class="status-chip status-${s}">`
+         + `<span class="status-glyph">${STATUS_GLYPHS[s] || "•"}</span>`
+         + `<span class="status-label">${label}</span></span>`;
   }
-
-  // Listen for sl-change once at the document level — covers all in-row
-  // checkboxes regardless of when they're rendered.
-  document.addEventListener("sl-change", async (e) => {
-    const cb = e.target.closest("sl-checkbox[data-hash]");
-    if (!cb) return;
-    const hash = cb.dataset.hash;
-    const applied = cb.checked ? "on" : "off";
-    try {
-      await fetch(`/actions/applied/${hash}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `applied=${applied}`,
-      });
-    } catch (err) {
-      console.error("Applied update failed:", err);
-      cb.checked = !cb.checked;
-    }
-  });
 
   // Row click → load the detail panel via HTMX and reveal the detail pane.
   function onRowClicked(event) {
@@ -172,12 +164,12 @@
       cellClass: "text-ink-3 text-xs",
     },
     {
-      field: "applied",
-      headerName: "Applied",
-      width: 90,
+      field: "status",
+      headerName: "Status",
+      width: 150,
       filter: "agSetColumnFilter",
-      cellRenderer: appliedCellRenderer,
-      cellClass: "text-center",
+      cellRenderer: statusCellRenderer,
+      cellClass: "text-left",
     },
   ];
 
@@ -215,6 +207,7 @@
     rowClassRules: {
       "row-selected": (params) =>
         window._jiaSelectedHash && params.data && params.data.hash === window._jiaSelectedHash,
+      "row-closed": (params) => params.data && params.data.status === "closed",
     },
   };
 

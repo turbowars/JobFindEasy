@@ -120,14 +120,12 @@ document.addEventListener("keydown", (e) => {
       navigate(-1);
       break;
     case "a": {
-      // Toggle Applied on the currently-selected detail row.
-      const toggle = document.querySelector("#detail [data-applied-toggle]");
-      if (toggle) {
+      // Quick-set status to 'applied' for the selected job.
+      const strip = document.querySelector("#detail [data-status-strip]");
+      if (strip) {
         e.preventDefault();
-        // <sl-switch> exposes `.checked`; toggle and dispatch sl-change so
-        // the HTMX hx-trigger="sl-change" listener fires the POST.
-        toggle.checked = !toggle.checked;
-        toggle.dispatchEvent(new CustomEvent("sl-change", { bubbles: true, composed: true }));
+        const pill = strip.querySelector("[data-status='applied']");
+        if (pill) pill.click();
       }
       break;
     }
@@ -199,6 +197,113 @@ document.body.addEventListener("htmx:afterRequest", (e) => {
       flashMessage("📦 bulk generation queued");
     }
   }
+});
+
+// --------------------------------------------------------------------------
+// Status strip — pill clicks transition the selected job's state.
+// Closed pill uses an <sl-dropdown> menu of reasons (sl-select event).
+// --------------------------------------------------------------------------
+async function setJobStatus(hash, status, closedReason) {
+  const body = new URLSearchParams({ status });
+  if (closedReason) body.set("closed_reason", closedReason);
+  const r = await fetch(`/actions/status/${hash}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (!r.ok) {
+    flashMessage("Status update failed");
+    return false;
+  }
+  // Refresh detail pane (so pill states re-render) and grid (so chip + sidebar counts update)
+  htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
+  if (typeof window.jia_refreshGrid === "function") window.jia_refreshGrid();
+  htmx.ajax("GET", "/partials/badges", { target: "#badges", swap: "innerHTML" });
+  return true;
+}
+
+document.addEventListener("click", (e) => {
+  const pill = e.target.closest("[data-status-pill]");
+  if (!pill) return;
+  const strip = pill.closest("[data-status-strip]");
+  if (!strip) return;
+  e.preventDefault();
+  const hash = strip.dataset.hash;
+  const status = pill.dataset.status;
+  setJobStatus(hash, status);
+});
+
+document.addEventListener("sl-select", (e) => {
+  const menu = e.target.closest("[data-closed-menu]");
+  if (!menu) return;
+  const hash = menu.dataset.hash;
+  const reason = e.detail.item && e.detail.item.value;
+  if (!hash || !reason) return;
+  setJobStatus(hash, "closed", reason);
+});
+
+// "Apply queue with Claude" — fetches a server-rendered prompt that
+// embeds Dheeraj's context, the 7-step workflow, and the active queue
+// (shortlisted + applying) with hashes + URLs, then copies it to the
+// clipboard for paste into the Claude-for-Chrome sidebar.
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("#claude-prompt-btn");
+  if (!btn) return;
+  e.preventDefault();
+  btn.loading = true;
+  btn.disabled = true;
+  try {
+    const r = await fetch("/api/claude-prompt.txt");
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const text = await r.text();
+    await navigator.clipboard.writeText(text);
+    // Crude queue-size readout from the prompt header
+    const m = text.match(/^## Queue \((\d+) job/m);
+    const n = m ? m[1] : "?";
+    flashMessage(`📋 prompt copied (${n} job${n === "1" ? "" : "s"}) — paste into Claude for Chrome`);
+  } catch (err) {
+    flashMessage("Copy failed: " + err.message);
+  } finally {
+    btn.loading = false;
+    btn.disabled = false;
+  }
+});
+
+// Pipeline rows in the sidebar — click filters the grid by that status.
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-status-filter]");
+  if (!btn) return;
+  e.preventDefault();
+  if (!window._jiaGrid) return;
+  const status = btn.dataset.statusFilter;
+  // AG Grid set filter for the status column
+  const filter = window._jiaGrid.getFilterInstance("status");
+  if (filter && filter.setModel) {
+    filter.setModel({ values: [status] });
+    window._jiaGrid.onFilterChanged();
+  }
+});
+
+// Apply with Claude — flips status to 'applying' then opens the URL in a
+// new tab. Session-brief generation is a follow-up PR.
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-action='apply-with-claude']");
+  if (!btn) return;
+  e.preventDefault();
+  const hash = btn.dataset.hash;
+  const url = btn.dataset.url;
+  try {
+    const r = await fetch(`/actions/apply/${hash}`, { method: "POST" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  } catch (err) {
+    flashMessage("Apply transition failed: " + err.message);
+    return;
+  }
+  htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
+  if (typeof window.jia_refreshGrid === "function") window.jia_refreshGrid();
+  htmx.ajax("GET", "/partials/badges", { target: "#badges", swap: "innerHTML" });
+  if (url) window.open(url, "_blank", "noopener");
+  flashMessage("▶ status: applying");
 });
 
 // --------------------------------------------------------------------------

@@ -590,3 +590,67 @@ tr.row.selected {
   border-top: 1px solid rgba(38, 38, 42, 0.5);
   background: #0d0d0e;
 }
+
+/* ================================================================
+ * Status chips (grid) + status pills (detail strip)
+ * Stays inside the 3-color palette — distinction via glyph + opacity,
+ * never new hues.
+ * ================================================================ */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.status-chip .status-glyph { font-size: 10px; opacity: 0.9; }
+
+.status-new          { color: rgba(232, 232, 232, 0.38); }
+.status-shortlisted  { color: rgba(232, 232, 232, 0.62); }
+.status-applying     { color: #10b981; background: rgba(16, 185, 129, 0.10); }
+.status-applied      { color: #10b981; background: rgba(16, 185, 129, 0.18); }
+.status-interviewing { color: #10b981; background: rgba(16, 185, 129, 0.24); border-style: dashed; }
+.status-offer        { color: #0d0d0e; background: #10b981; border-color: #10b981; font-weight: 600; }
+.status-closed       { color: rgba(232, 232, 232, 0.38); opacity: 0.75; }
+
+.jia-grid .ag-row.row-closed { opacity: 0.55; }
+.jia-grid .ag-row.row-closed:hover { opacity: 0.9 !important; }
+
+/* Status pills in the detail strip — same palette, larger touch target,
+ * clickable. `state-current` is loud, `state-past` is muted, `state-future`
+ * is outline-only. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: transparent;
+  cursor: pointer;
+  color: rgba(232, 232, 232, 0.38);
+  transition: all 0.12s ease;
+}
+.status-pill .status-glyph { font-size: 10px; }
+.status-pill:hover {
+  color: rgba(232, 232, 232, 0.85);
+  background: rgba(38, 38, 42, 0.6);
+}
+
+.status-pill.state-current.status-new          { color: rgba(232, 232, 232, 0.85); background: rgba(38, 38, 42, 0.7); }
+.status-pill.state-current.status-shortlisted  { color: rgba(232, 232, 232, 0.95); background: rgba(38, 38, 42, 0.8); }
+.status-pill.state-current.status-applying     { color: #10b981; background: rgba(16, 185, 129, 0.14); border-color: #10b981; }
+.status-pill.state-current.status-applied      { color: #10b981; background: rgba(16, 185, 129, 0.22); border-color: #10b981; }
+.status-pill.state-current.status-interviewing { color: #10b981; background: rgba(16, 185, 129, 0.28); border-style: dashed; border-color: #10b981; }
+.status-pill.state-current.status-offer        { color: #0d0d0e; background: #10b981; border-color: #10b981; font-weight: 600; }
+.status-pill.state-current.status-closed       { color: #e8e8e8; background: rgba(38, 38, 42, 0.85); border-color: rgba(232, 232, 232, 0.5); }
+
+.status-pill.state-past   { color: rgba(232, 232, 232, 0.55); }
+.status-pill.state-future { color: rgba(232, 232, 232, 0.30); border-style: dotted; }

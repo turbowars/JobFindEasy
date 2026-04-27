@@ -98,7 +98,15 @@
     <sl-checkbox name="show_rejects" size="small">
       <span class="text-xs">Show rejects</span>
     </sl-checkbox>
-    <span id="grid-count" class="text-[11px] text-ink-3 ml-auto tabular-nums whitespace-nowrap">…</span>
+    <sl-button id="claude-prompt-btn"
+               size="small"
+               variant="default"
+               class="ml-auto"
+               title="Copy a Claude-for-Chrome prompt that walks through your shortlisted/applying queue">
+      <span slot="prefix">⚡</span>
+      Apply queue with Claude
+    </sl-button>
+    <span id="grid-count" class="text-[11px] text-ink-3 tabular-nums whitespace-nowrap">…</span>
   </div>
 
   <!-- AG Grid -->

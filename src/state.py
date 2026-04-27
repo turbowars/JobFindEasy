@@ -148,10 +148,16 @@ def _autoscrape_loop_factory():
     def _run_pipeline_headless(score_limit: int) -> dict:
         out = {
             "new": 0, "skipped": 0, "prefilter_pass": 0,
-            "scored": 0, "auto_resumes": 0, "error": None,
+            "scored": 0, "auto_resumes": 0, "ghosted": 0, "error": None,
         }
         try:
             db.init_db()
+            # Ghost-sweep: applied rows older than N days that haven't moved
+            # get auto-flipped to closed:ghosted. Cheap single UPDATE.
+            from .status import GHOST_SWEEP_DAYS
+            ghost_days = int(os.environ.get("GHOST_SWEEP_DAYS", GHOST_SWEEP_DAYS))
+            out["ghosted"] = db.sweep_ghosted(ghost_days)
+
             jobs = run_all_sync()
             if jobs:
                 new, skipped = db.upsert_many(jobs)

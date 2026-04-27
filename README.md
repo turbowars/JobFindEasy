@@ -64,7 +64,7 @@ cp .env.example .env
 python -m src.cli init       # creates data/jobs.db
 python -m src.cli run        # full pipeline: scrape -> prefilter -> score -> notify
 python -m src.cli stats      # quick summary
-streamlit run ui/app.py      # opens dashboard at http://localhost:8501
+make run                     # opens dashboard at http://127.0.0.1:8826
 ```
 
 ## CLI reference

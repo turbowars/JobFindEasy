@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     score_breakdown TEXT,
     score_rationale TEXT,
     tier TEXT,
-    applied INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'new',
+    status_at TEXT,
+    closed_reason TEXT,
     applied_at TEXT,
     notes TEXT,
     scraped_at TEXT NOT NULL
@@ -40,18 +42,15 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 CREATE INDEX IF NOT EXISTS idx_score ON jobs(score_total DESC);
 CREATE INDEX IF NOT EXISTS idx_tier ON jobs(tier);
-CREATE INDEX IF NOT EXISTS idx_applied ON jobs(applied);
 CREATE INDEX IF NOT EXISTS idx_scraped ON jobs(scraped_at DESC);
+CREATE INDEX IF NOT EXISTS idx_company ON jobs(company);
+-- idx_status is created in init_db() below, after ALTER adds the column
+-- on existing DBs that predate it.
 
 CREATE TABLE IF NOT EXISTS scrape_state (
     source_key TEXT PRIMARY KEY,
     last_scraped_at TEXT NOT NULL
 );
-
--- score_fail_count was added later; add the column if it isn't there yet.
--- SQLite doesn't support `ADD COLUMN IF NOT EXISTS`, so we use a sentinel
--- query (executed by init_db at startup, errors swallowed).
-CREATE INDEX IF NOT EXISTS idx_company ON jobs(company);
 """
 
 
@@ -76,14 +75,44 @@ def init_db() -> None:
     """
     with conn() as c:
         c.executescript(SCHEMA)
+        # Forward-compat ALTERs for columns added since the original schema.
+        # Each is idempotent (swallows "duplicate column" on re-run).
         for ddl in (
             "ALTER TABLE jobs ADD COLUMN score_fail_count INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE jobs ADD COLUMN scored_at TEXT",
+            "ALTER TABLE jobs ADD COLUMN status TEXT NOT NULL DEFAULT 'new'",
+            "ALTER TABLE jobs ADD COLUMN status_at TEXT",
+            "ALTER TABLE jobs ADD COLUMN closed_reason TEXT",
+            "CREATE INDEX IF NOT EXISTS idx_status ON jobs(status)",
         ):
             try:
                 c.execute(ddl)
             except sqlite3.OperationalError:
-                pass  # column already exists
+                pass  # column / index already exists
+
+        # One-time backfill: rows previously marked applied=1 (legacy boolean
+        # column) become status='applied'. Idempotent — only touches rows
+        # still in the default 'new' state.
+        try:
+            c.execute(
+                """UPDATE jobs
+                      SET status = 'applied',
+                          status_at = COALESCE(applied_at, scraped_at)
+                    WHERE applied = 1 AND status = 'new'"""
+            )
+        except sqlite3.OperationalError:
+            pass  # `applied` column already removed
+
+        # Drop the legacy `applied` boolean column. Status is now the source
+        # of truth; `applied_at` (a timestamp) is retained.
+        for ddl in (
+            "DROP INDEX IF EXISTS idx_applied",
+            "ALTER TABLE jobs DROP COLUMN applied",
+        ):
+            try:
+                c.execute(ddl)
+            except sqlite3.OperationalError:
+                pass  # already dropped, or sqlite < 3.35 — column orphans harmlessly
 
 
 def upsert_job(job: Job) -> bool:
@@ -99,8 +128,8 @@ def upsert_job(job: Job) -> bool:
                 hash, source, company, title, location, url, description,
                 posted_at, salary_min, salary_max, remote, sponsorship_status,
                 prefilter_passed, prefilter_reason, score_total, score_breakdown,
-                score_rationale, tier, applied, applied_at, notes, scraped_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                score_rationale, tier, applied_at, notes, scraped_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job.hash, job.source, job.company, job.title, job.location, job.url,
@@ -108,7 +137,7 @@ def upsert_job(job: Job) -> bool:
                 int(job.remote) if job.remote is not None else None,
                 job.sponsorship_status, int(job.prefilter_passed),
                 job.prefilter_reason, job.score_total, job.score_breakdown,
-                job.score_rationale, job.tier, int(job.applied),
+                job.score_rationale, job.tier,
                 job.applied_at, job.notes, job.scraped_at,
             ),
         )
@@ -128,7 +157,7 @@ def upsert_many(jobs: Iterable[Job]) -> tuple[int, int]:
             int(j.remote) if j.remote is not None else None,
             j.sponsorship_status, int(j.prefilter_passed),
             j.prefilter_reason, j.score_total, j.score_breakdown,
-            j.score_rationale, j.tier, int(j.applied),
+            j.score_rationale, j.tier,
             j.applied_at, j.notes, j.scraped_at,
         )
         for j in jobs
@@ -143,8 +172,8 @@ def upsert_many(jobs: Iterable[Job]) -> tuple[int, int]:
                 hash, source, company, title, location, url, description,
                 posted_at, salary_min, salary_max, remote, sponsorship_status,
                 prefilter_passed, prefilter_reason, score_total, score_breakdown,
-                score_rationale, tier, applied, applied_at, notes, scraped_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                score_rationale, tier, applied_at, notes, scraped_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -222,13 +251,68 @@ def update_prefilter(job_hash: str, passed: bool, reason: str, sponsorship: str)
         )
 
 
-def set_applied(job_hash: str, applied: bool, when: Optional[str] = None) -> None:
+def set_status(
+    job_hash: str,
+    status: str,
+    closed_reason: Optional[str] = None,
+) -> None:
+    """Transition a job to a new status.
+
+    Validates against `status.STATUSES` / `status.CLOSED_REASONS`. Sets
+    `status_at = now` on every call. Sets `applied_at = now` the first time
+    a job transitions to status='applied' (preserved on later transitions).
+    Clears `closed_reason` automatically when status != 'closed'.
+    """
     from datetime import datetime
+    from .status import is_valid_status, is_valid_closed_reason
+    if not is_valid_status(status):
+        raise ValueError(f"invalid status: {status!r}")
+    if closed_reason is not None and not is_valid_closed_reason(closed_reason):
+        raise ValueError(f"invalid closed_reason: {closed_reason!r}")
+    if status != "closed":
+        closed_reason = None
+    now = datetime.utcnow().isoformat()
     with conn() as c:
-        c.execute(
-            "UPDATE jobs SET applied=?, applied_at=? WHERE hash=?",
-            (int(applied), when or (datetime.utcnow().isoformat() if applied else None), job_hash),
+        if status == "applied":
+            c.execute(
+                """UPDATE jobs
+                      SET status = ?, status_at = ?, closed_reason = ?,
+                          applied_at = COALESCE(applied_at, ?)
+                    WHERE hash = ?""",
+                (status, now, closed_reason, now, job_hash),
+            )
+        else:
+            c.execute(
+                "UPDATE jobs SET status=?, status_at=?, closed_reason=? WHERE hash=?",
+                (status, now, closed_reason, job_hash),
+            )
+
+
+def get_status_counts() -> dict[str, int]:
+    """Returns {status: count} across all jobs. Missing keys → 0 in caller."""
+    with conn() as c:
+        cur = c.execute("SELECT status, COUNT(*) FROM jobs GROUP BY status")
+        return {row[0]: int(row[1]) for row in cur.fetchall()}
+
+
+def sweep_ghosted(days: int) -> int:
+    """Flip status='applied' rows older than `days` to status='closed' /
+    closed_reason='ghosted'. Returns the number of rows updated.
+    """
+    from datetime import datetime, timedelta
+    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    now = datetime.utcnow().isoformat()
+    with conn() as c:
+        cur = c.execute(
+            """UPDATE jobs
+                  SET status = 'closed',
+                      closed_reason = 'ghosted',
+                      status_at = ?
+                WHERE status = 'applied' AND status_at IS NOT NULL
+                  AND status_at < ?""",
+            (now, cutoff),
         )
+        return cur.rowcount or 0
 
 
 def set_notes(job_hash: str, notes: str) -> None:
@@ -237,7 +321,8 @@ def set_notes(job_hash: str, notes: str) -> None:
 
 
 def get_strong_fits_today(min_score: int = 80) -> list[dict]:
-    """For the daily notification."""
+    """For the daily notification — strong fits from the last 24h that
+    haven't been touched yet (status='new' or 'shortlisted')."""
     from datetime import datetime, timedelta
     cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
     with conn() as c:
@@ -245,7 +330,7 @@ def get_strong_fits_today(min_score: int = 80) -> list[dict]:
             """SELECT * FROM jobs
                WHERE score_total >= ? AND scraped_at >= ?
                AND sponsorship_status != 'denied'
-               AND applied = 0
+               AND status IN ('new', 'shortlisted')
                ORDER BY score_total DESC""",
             (min_score, cutoff),
         )

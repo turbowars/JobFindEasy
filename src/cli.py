@@ -165,7 +165,10 @@ def stats():
     table.add_row("Strong fits (80+)", str(int((df["score_total"] >= 80).sum())))
     table.add_row("Possible (60-79)", str(int(((df["score_total"] >= 60) & (df["score_total"] < 80)).sum())))
     table.add_row("Sponsorship denied", str(int((df["sponsorship_status"] == "denied").sum())))
-    table.add_row("Applied", str(int(df["applied"].sum())))
+    for s in ("shortlisted", "applying", "applied", "interviewing", "offer", "closed"):
+        n = int((df["status"] == s).sum())
+        if n:
+            table.add_row(s.capitalize(), str(n))
     console.print(table)
 
     top = df[df["score_total"].notna()].nlargest(10, "score_total")[

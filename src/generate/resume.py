@@ -84,9 +84,10 @@ CONTACT (EM profile)
 - github.com/turbowars
 
 WRITING RULES
-- No em dashes anywhere in the resume
-- No en dashes in prose; date ranges with " - " are fine
-- Quantify every bullet (number, percent, scope, named tool)
+- ZERO em dashes (—) anywhere in the resume — including education and project entries.
+- ZERO en dashes (–) anywhere; use commas or " - " (hyphen with spaces) instead.
+- ZERO IC / "Individual Contributor" track markers in any visible field.
+- Quantify every bullet (number, percent, scope, named tool).
 
 Return JSON only with the structure described in the user message."""
 
@@ -125,8 +126,8 @@ The JSON must have this exact shape:
     ... 3-5 selected projects, ONLY for IC track. EM track: omit or empty array.
   ],
   "education": [
-    "M.B.A., Digital Entrepreneurship — Strayer University, Herndon, VA",
-    "B.Tech, Computer Science — Mahatma Gandhi Institute of Technology, India",
+    "M.B.A., Digital Entrepreneurship - Strayer University, Herndon, VA",
+    "B.Tech, Computer Science - Mahatma Gandhi Institute of Technology, India",
     "Certified Scrum Master, Scrum Alliance | Certified Usability Analyst, HFI"
   ],
   "tailoring_report": {{
@@ -147,8 +148,8 @@ FORMATTING DIRECTIVES (follow exactly):
   ("**cutting build cycles 25%**", "**MCP-Powered Dev Assistant**"). Use bold
   selectively — 1-2 emphasis spans per bullet at most. Bold ONLY the
   measurable result or a named tool/system, never filler words.
-- Education entries can use ` — ` (em dash style) to separate degree from
-  institution; keep one entry per line.
+- Education entries use ` - ` (single hyphen with spaces) to separate degree
+  from institution; keep one entry per line. Never em dashes.
 
 HEADLINE RULES (track-conditional):
 - IC track: headline is THREE slots separated by `  |  ` (two spaces, pipe,
@@ -158,8 +159,13 @@ HEADLINE RULES (track-conditional):
   No pipes, no alternates, no parentheticals.**
 
 NEVER OUTPUT THESE TOKENS ANYWHERE IN THE RESUME:
-- "(IC)" or "(EM)" or any track marker. The track is internal; it must not
-  appear in any visible field (headline, summary, role title, bullet, skill).
+- The strings "IC", "EM", "(IC)", "(EM)", "IC track", "EM track",
+  "Individual Contributor", or any other track marker — in ANY field
+  (headline, summary, role title, bullet, skill, project, education).
+  The track is INTERNAL metadata; it must never reach a visible field.
+- Em dashes (—) and en dashes (–) anywhere. Use commas or " - " (hyphen
+  with spaces) instead. This is a hard rule — no exceptions, including
+  education entries.
 - The target company's name embedded inside a mirror role title. The JD
   target role MUST NOT contain the company you are applying to. Example
   WRONG: if applying to Coinbase for "Engineering Manager, Legend", do NOT
@@ -178,12 +184,14 @@ CANONICAL COMPANY NAMES IN EXPERIENCE BLOCK (always use these exact spellings):
 - Neudesic → "Neudesic"
 
 Final check before returning:
-- No em dashes (—) anywhere outside the explicit em-dash separator in
-  education / project entries.
+- ZERO em dashes (—) and ZERO en dashes (–) anywhere — every separator is a
+  comma or " - " (hyphen with spaces). Education and project entries are
+  not exceptions.
+- ZERO occurrences of "IC", "EM", "IC track", "EM track", or
+  "Individual Contributor" in any visible field.
 - Headline slot 1 = JD target title, exact string.
 - For EM track: headline contains exactly ONE slot (no pipes).
 - Summary line 1 starts with the same noun phrase as headline slot 1.
-- No "(IC)" or "(EM)" anywhere in the output.
 - No mirror role title containing the target company's name.
 - Output is valid JSON parseable by Python's json.loads.
 """
@@ -242,21 +250,33 @@ def _generate_structured(
     return json.loads(text)
 
 
-def _scrub_dashes_in_prose(s: str) -> str:
-    """Strip em-dashes from prose lines (summary, bullets) where they read as
-    a stylistic choice we don't want. Em-dashes are intentionally preserved in
-    structural separators (project / education entries) — those are not run
-    through this function.
+def _scrub_dashes(s: str) -> str:
+    """Replace every em dash (—) and en dash (–) with a hyphen-with-spaces
+    or a plain comma where adjacent whitespace makes the hyphen feel wrong.
+    Applied universally — there are no fields where em dashes are wanted.
     """
     if not s:
         return s
-    s = s.replace("—", ". ")
-    s = s.replace("–", "-")
-    return s
+    # ` — ` and ` – ` (separator forms with spaces) become ` - `
+    s = re.sub(r"\s*[—–]\s*", " - ", s)
+    # Collapse double spaces introduced by the substitution
+    s = re.sub(r"  +", " ", s)
+    return s.strip()
 
 
 # Belt-and-suspenders normalization for output the LLM might still drift on.
-_TRACK_TAG_RE = re.compile(r"\s*\((?:IC|EM|ic|em)\)\s*")
+# Catches every track-marker form we've seen the model emit:
+#   "(IC)" / "(EM)" / "(ic)" / "(em)"
+#   "(Individual Contributor)"
+#   "IC track" / "EM track" / "IC Track" / "EM Track"
+#   " — IC", " - EM", ", IC", ": EM"  (suffix tags after a separator)
+#   "Individual Contributor" (bare)
+_TRACK_TAG_PATTERNS = [
+    re.compile(r"\s*\((?:IC|EM|Individual\s+Contributor)\)\s*", re.IGNORECASE),
+    re.compile(r"\s*[—\-,:]\s*(?:IC|EM)(?:\s+[Tt]rack)?(?=\s|$|[.,;:|])"),
+    re.compile(r"\b(?:IC|EM)\s+[Tt]rack\b"),
+    re.compile(r"\bIndividual\s+Contributor(?:\s+[Tt]rack)?\b", re.IGNORECASE),
+]
 
 # Map of "wrong" company strings the LLM sometimes emits → canonical form.
 # Applied to BOTH the company name field and any embedded mention in a title.
@@ -272,7 +292,10 @@ _COMPANY_CANONICAL = [
 def _strip_track_tags(s: str) -> str:
     if not s:
         return s
-    return _TRACK_TAG_RE.sub("", s).strip()
+    for pat in _TRACK_TAG_PATTERNS:
+        s = pat.sub("", s)
+    # Collapse whitespace introduced by the substitutions.
+    return re.sub(r"\s{2,}", " ", s).strip()
 
 
 def _canonicalize_company(s: str) -> str:
@@ -347,14 +370,34 @@ def _canonicalize_payload(payload: dict, jd_company: str, track: str) -> dict:
 
 
 def _scrub_payload(payload: dict) -> dict:
-    """Apply em-dash scrubbing only where it's appropriate (prose), leaving
-    education and project structural separators alone.
+    """Strip em / en dashes from every renderable field. No field is exempt
+    — em dashes don't appear in the resume regardless of context.
     """
+    if "headline" in payload:
+        payload["headline"] = _scrub_dashes(payload.get("headline") or "")
     if "summary" in payload:
-        payload["summary"] = _scrub_dashes_in_prose(payload.get("summary") or "")
+        payload["summary"] = _scrub_dashes(payload.get("summary") or "")
     for role in payload.get("experience", []) or []:
+        role["title"] = _scrub_dashes(role.get("title") or "")
+        role["company"] = _scrub_dashes(role.get("company") or "")
+        role["location"] = _scrub_dashes(role.get("location") or "")
+        # Date ranges intentionally use ` - ` (hyphen) per the prompt rules,
+        # but if the LLM ever emits em/en dashes in dates, scrub them too.
+        role["dates"] = _scrub_dashes(role.get("dates") or "")
         bullets = role.get("bullets") or []
-        role["bullets"] = [_scrub_dashes_in_prose(b) for b in bullets]
+        role["bullets"] = [_scrub_dashes(b) for b in bullets]
+    payload["education"] = [
+        _scrub_dashes(e or "") for e in (payload.get("education") or [])
+    ]
+    for proj in payload.get("projects", []) or []:
+        if isinstance(proj, dict):
+            proj["name"] = _scrub_dashes(proj.get("name") or "")
+            proj["description"] = _scrub_dashes(proj.get("description") or "")
+    for skill_block in payload.get("skills", []) or []:
+        if isinstance(skill_block, dict):
+            skill_block["label"] = _scrub_dashes(skill_block.get("label") or "")
+            items = skill_block.get("items") or []
+            skill_block["items"] = [_scrub_dashes(i or "") for i in items]
     return payload
 
 

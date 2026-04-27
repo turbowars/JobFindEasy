@@ -9,16 +9,28 @@
     <div class="text-[9px] uppercase tracking-[0.1em] text-ink-3">Strong</div>
     <div class="text-base font-semibold tabular-nums {{ 'text-accent' if strong > 0 else 'text-ink-3' }}">{{ strong }}</div>
   </div>
-  <div class="rounded p-2 bg-base-200/30">
-    <div class="text-[9px] uppercase tracking-[0.1em] text-ink-3">Applied</div>
-    <div class="text-base font-semibold tabular-nums text-ink">{{ applied }}</div>
-  </div>
   <div class="rounded p-2 bg-base-200/30" title="Applied 7+ days ago — follow up">
     <div class="text-[9px] uppercase tracking-[0.1em] text-ink-3">Follow-up</div>
     <div class="text-base font-semibold tabular-nums {{ 'text-accent' if pending_followup > 0 else 'text-ink-3' }}">{{ pending_followup }}</div>
   </div>
-  <div class="rounded p-2 bg-base-200/30">
+  <div class="rounded p-2 bg-base-200/30 col-span-2">
     <div class="text-[9px] uppercase tracking-[0.1em] text-ink-3">Total</div>
     <div class="text-base font-semibold tabular-nums text-ink-2">{{ total }}</div>
   </div>
+</div>
+
+{# Pipeline counts — one click per row filters the grid by that status. #}
+<div class="mt-2 space-y-0.5">
+  <div class="text-[10px] uppercase tracking-[0.12em] text-ink-3 mb-1">Pipeline</div>
+  {% for p in pipeline %}
+    <button type="button"
+            data-status-filter="{{ p.key }}"
+            class="w-full flex items-center justify-between gap-2 px-1.5 py-0.5 rounded text-[12px] hover:bg-base-200/50 {{ 'text-ink' if p.count else 'text-ink-3' }}">
+      <span class="flex items-center gap-1.5">
+        <span class="status-glyph text-[11px] opacity-70">{{ p.glyph }}</span>
+        <span>{{ p.label }}</span>
+      </span>
+      <span class="tabular-nums {{ 'font-semibold' if p.count else '' }}">{{ p.count }}</span>
+    </button>
+  {% endfor %}
 </div>

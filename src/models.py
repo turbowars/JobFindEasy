@@ -64,7 +64,6 @@ class Job:
     tier: str = ""                       # "strong" | "possible" | "stretch" | "skip"
 
     # Tracking
-    applied: bool = False
     applied_at: Optional[str] = None
     notes: str = ""
 
