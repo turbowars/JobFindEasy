@@ -38,3 +38,23 @@ Job Intel: 10 strong fits today
   - Senior Manager, Platform Engineering - Secure Supply Chain at Twilio (89)
   - + 7 more in dashboard
 ===== run finished 2026-04-26T08:00:13-05:00 =====
+13:32:52 [INFO] httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+13:32:54 [INFO] httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+13:32:56 [INFO] httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+13:32:59 [INFO] httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+13:33:01 [INFO] httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+13:33:05 [INFO] httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+13:33:07 [INFO] httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+13:33:10 [INFO] httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+13:33:12 [INFO] httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+13:33:14 [INFO] httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+13:33:17 [INFO] httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+scored 200 jobs
+auto-generated 5 resume(s) for strong fits
+
+Job Intel: 12 strong fits today
+  - Engineering Manager, Identity Frontend at Coinbase (97)
+  - Engineering Manager, UI Tooling at Airbnb (92)
+  - Senior Manager, Platform Engineering - Secure Supply Chain at Twilio (92)
+  - + 9 more in dashboard
+===== run finished 2026-04-27T13:33:26-05:00 =====

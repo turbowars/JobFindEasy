@@ -34,3 +34,4 @@ data/launchd-stdout.log
 # IDE
 .vscode/
 .idea/
+data/launchd-stdout.log
