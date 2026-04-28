@@ -113,6 +113,21 @@ greenhouse:
   - runwayml
   - mistralai
   - characterai
+  # Target companies (added 2026-04-28)
+  - webflow
+  - circleci
+  - headway
+  - springhealth
+  - whoop
+  - doximity
+  - oscarhealth
+  - cedar
+  - komodohealth
+  - headspace # Headspace Health
+  - swordhealthtech # Sword Health
+  - mavenclinic
+  - himshers # Hims & Hers
+  - ouraring # Oura
 
 lever:
   - netflix
@@ -155,6 +170,10 @@ lever:
   - loom
   - pitch
   - airtm
+  # Target companies (added 2026-04-28)
+  - ro
+  - lyrahealth
+  - includedhealth
 
 ashby:
   # You've already applied to some of these — keep them in your radar
@@ -195,6 +214,11 @@ ashby:
   - decagon
   - sierra
   - crusoe
+  # Target companies (added 2026-04-28)
+  - hinge-health
+  - eightsleep
+  - bumble # 0 open positions currently, monitoring
+  - strava
 
 smartrecruiters:
   - atlassian
@@ -227,7 +251,7 @@ remotive:
   categories:
     - software-dev
     - product
-    - design   # included in case some EM roles get tagged here
+    - design # included in case some EM roles get tagged here
 
 aijobs:
   # AI-Jobs.net via RSS. Hits your AI EM target.

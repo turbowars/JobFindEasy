@@ -13,26 +13,16 @@ Never alter companies, titles, dates, or metrics. These are locked.
 - **Phone:** 248-873-8929
 - **Email:** dheerajsampath@proton.me
 - **LinkedIn:** linkedin.com/in/evolvingdx
-- **Portfolio:** dheerajsampath.framer.website
+- **Portfolio:** dheerajsampath.com
 - **GitHub:** github.com/turbowars
-
----
-
-## Default Headline (override per JD using Step 1 of SKILL.md)
-
-EM headlines are exactly ONE slot — the JD's target title verbatim, with no pipe separators and no alternates. Example default if no JD is provided:
-
-```
-Engineering Manager
-```
 
 ---
 
 ## Professional Summary (template)
 
-Engineering manager with 15+ years delivering scalable, user-centric platforms and leading high-performing global teams in agile, distributed environments. Skilled at growth-focused technical strategy, architectural design, and cross-functional collaboration. Deep specialization in React, TypeScript, micro-frontend platforms, and developer experience tooling, with recent focus on LLM-powered developer workflows and AI-augmented delivery. Passionate about empowering engineers and building inclusive cultures. H-1B with approved I-140 and AC21 portability.
+Engineering manager with 15+ years delivering scalable, user-centric platforms and leading high-performing global teams in agile, distributed environments. Skilled at growth-focused technical strategy, architectural design, and cross-functional collaboration. Deep specialization in React, TypeScript, micro-frontend platforms, and developer experience tooling, with recent focus on LLM-powered developer workflows and AI-augmented delivery. Passionate about empowering engineers and building inclusive cultures.
 
-**Rewrite for each JD** following the Step 2b summary-line guardrail in SKILL.md. Keep the I-140/AC21 line.
+**Rewrite for each JD** following the Step 1b summary-line guardrail in SKILL.md.
 
 ---
 
@@ -129,18 +119,18 @@ Engineering manager with 15+ years delivering scalable, user-centric platforms a
 
 ## Quick Copy — Application Form Answers
 
-| Field | Answer |
-|---|---|
-| Name | Dheeraj Sampath |
-| Email | dheerajsampath@proton.me |
-| Phone | 248-873-8929 |
-| Location | Austin, TX 78759 |
-| LinkedIn | linkedin.com/in/evolvingdx |
-| Portfolio | dheerajsampath.framer.website |
-| GitHub | github.com/turbowars |
-| Salary expectation | 190000 |
-| Sponsorship | H-1B with approved I-140 and AC21 portability |
-| Veteran | Not a veteran |
-| Disability | No disability |
-| Race/Ethnicity | Asian |
-| Notice period | 2 weeks |
+| Field              | Answer                                        |
+| ------------------ | --------------------------------------------- |
+| Name               | Dheeraj Sampath                               |
+| Email              | dheerajsampath@proton.me                      |
+| Phone              | 248-873-8929                                  |
+| Location           | Austin, TX 78759                              |
+| LinkedIn           | linkedin.com/in/evolvingdx                    |
+| Portfolio          | dheerajsampath.framer.website                 |
+| GitHub             | github.com/turbowars                          |
+| Salary expectation | 190000                                        |
+| Sponsorship        | H-1B with approved I-140 and AC21 portability |
+| Veteran            | Not a veteran                                 |
+| Disability         | No disability                                 |
+| Race/Ethnicity     | Asian                                         |
+| Notice period      | 2 weeks                                       |

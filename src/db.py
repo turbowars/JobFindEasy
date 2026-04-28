@@ -51,6 +51,11 @@ CREATE TABLE IF NOT EXISTS scrape_state (
     source_key TEXT PRIMARY KEY,
     last_scraped_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 
@@ -114,72 +119,187 @@ def init_db() -> None:
             except sqlite3.OperationalError:
                 pass  # already dropped, or sqlite < 3.35 — column orphans harmlessly
 
+        # One-shot migration: rebuild hashes from URL and merge duplicates that
+        # the old (source, company, title, location) hash failed to dedupe.
+        _migrate_url_hash(c)
+
+
+# Status priority used by the URL-hash migration to pick the surviving row
+# when multiple old rows collapse into the same new hash.
+_STATUS_PRIORITY = {
+    "offer": 7,
+    "interviewing": 6,
+    "applied": 5,
+    "applying": 4,
+    "shortlisted": 3,
+    "new": 2,
+    "closed": 1,
+}
+
+
+def _migrate_url_hash(c: sqlite3.Connection) -> None:
+    """Rebuild the `jobs.hash` column from URL and merge duplicates.
+
+    Runs once: a sentinel row is written to `meta` after success and
+    subsequent boots are no-ops. When multiple old rows collapse into the
+    same new hash, the winner is chosen by (score_total, status priority,
+    scraped_at), and the losers are deleted.
+    """
+    cur = c.execute("SELECT value FROM meta WHERE key = 'url_hash_v1'")
+    if cur.fetchone():
+        return
+
+    from collections import defaultdict
+    import hashlib
+    from datetime import datetime
+    from .models import _normalize_for_hash, _normalize_url
+
+    def _new_hash(url, source, company, title, location) -> str:
+        if url:
+            key = ("url|" + _normalize_url(url)).encode()
+        else:
+            key = "|".join(
+                _normalize_for_hash(p or "") for p in (source, company, title, location)
+            ).encode()
+        return hashlib.sha256(key).hexdigest()[:16]
+
+    rows = c.execute(
+        "SELECT hash, source, company, title, location, url, score_total, "
+        "status, scraped_at FROM jobs"
+    ).fetchall()
+
+    # group old hashes by new hash
+    groups: dict[str, list[tuple]] = defaultdict(list)
+    for r in rows:
+        nh = _new_hash(r["url"] or "", r["source"], r["company"], r["title"], r["location"] or "")
+        groups[nh].append(r)
+
+    deleted = 0
+    rehashed = 0
+
+    for new_h, members in groups.items():
+        if len(members) == 1:
+            old_h = members[0]["hash"]
+            if old_h != new_h:
+                # Defensive: don't crash if a row already sits at new_h
+                # (shouldn't happen given the grouping, but cheap to check).
+                exists = c.execute(
+                    "SELECT 1 FROM jobs WHERE hash = ?", (new_h,)
+                ).fetchone()
+                if exists:
+                    c.execute("DELETE FROM jobs WHERE hash = ?", (old_h,))
+                    deleted += 1
+                else:
+                    c.execute(
+                        "UPDATE jobs SET hash = ? WHERE hash = ?", (new_h, old_h)
+                    )
+                    rehashed += 1
+            continue
+
+        # Multiple old rows → one new hash. Pick the most-progressed winner.
+        def _key(row):
+            score = row["score_total"] if row["score_total"] is not None else -1
+            pri = _STATUS_PRIORITY.get(row["status"] or "new", 0)
+            ts = row["scraped_at"] or ""
+            return (score, pri, ts)
+
+        ordered = sorted(members, key=_key, reverse=True)
+        winner = ordered[0]["hash"]
+        losers = [m["hash"] for m in ordered[1:]]
+
+        placeholders = ",".join("?" * len(losers))
+        c.execute(f"DELETE FROM jobs WHERE hash IN ({placeholders})", losers)
+        deleted += len(losers)
+
+        if winner != new_h:
+            c.execute("UPDATE jobs SET hash = ? WHERE hash = ?", (new_h, winner))
+            rehashed += 1
+
+    c.execute(
+        "INSERT INTO meta (key, value) VALUES (?, ?)",
+        ("url_hash_v1", f"{datetime.utcnow().isoformat()} rehashed={rehashed} deleted={deleted}"),
+    )
+
+
+_UPSERT_SQL = """
+INSERT INTO jobs (
+    hash, source, company, title, location, url, description,
+    posted_at, salary_min, salary_max, remote, sponsorship_status,
+    prefilter_passed, prefilter_reason, score_total, score_breakdown,
+    score_rationale, tier, applied_at, notes, scraped_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(hash) DO UPDATE SET
+    source = excluded.source,
+    company = excluded.company,
+    title = excluded.title,
+    location = excluded.location,
+    url = excluded.url,
+    description = excluded.description,
+    posted_at = excluded.posted_at,
+    salary_min = excluded.salary_min,
+    salary_max = excluded.salary_max,
+    remote = excluded.remote,
+    scraped_at = excluded.scraped_at
+WHERE excluded.scraped_at >= jobs.scraped_at
+"""
+
+
+def _row_tuple(j: Job) -> tuple:
+    return (
+        j.hash, j.source, j.company, j.title, j.location, j.url,
+        j.description, j.posted_at, j.salary_min, j.salary_max,
+        int(j.remote) if j.remote is not None else None,
+        j.sponsorship_status, int(j.prefilter_passed),
+        j.prefilter_reason, j.score_total, j.score_breakdown,
+        j.score_rationale, j.tier,
+        j.applied_at, j.notes, j.scraped_at,
+    )
+
 
 def upsert_job(job: Job) -> bool:
-    """Insert if hash is new; skip entirely if already present.
+    """Insert if hash is new; otherwise update the content fields (title,
+    location, description, salary, posted_at, scraped_at) on the existing
+    row while preserving enrichment (score, prefilter, sponsorship) and
+    workflow (status, applied_at, notes, closed_reason).
 
-    Returns True if newly inserted, False if skipped as duplicate.
-    `INSERT OR IGNORE` makes this a single round-trip — no SELECT, no UPDATE.
+    Returns True if a new row was inserted, False if an existing row was
+    updated (or left unchanged because the incoming `scraped_at` was older).
     """
     with conn() as c:
-        cur = c.execute(
-            """
-            INSERT OR IGNORE INTO jobs (
-                hash, source, company, title, location, url, description,
-                posted_at, salary_min, salary_max, remote, sponsorship_status,
-                prefilter_passed, prefilter_reason, score_total, score_breakdown,
-                score_rationale, tier, applied_at, notes, scraped_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                job.hash, job.source, job.company, job.title, job.location, job.url,
-                job.description, job.posted_at, job.salary_min, job.salary_max,
-                int(job.remote) if job.remote is not None else None,
-                job.sponsorship_status, int(job.prefilter_passed),
-                job.prefilter_reason, job.score_total, job.score_breakdown,
-                job.score_rationale, job.tier,
-                job.applied_at, job.notes, job.scraped_at,
-            ),
-        )
-        return cur.rowcount == 1
+        existed = c.execute(
+            "SELECT 1 FROM jobs WHERE hash = ?", (job.hash,)
+        ).fetchone() is not None
+        c.execute(_UPSERT_SQL, _row_tuple(job))
+        return not existed
 
 
 def upsert_many(jobs: Iterable[Job]) -> tuple[int, int]:
-    """Returns (new_inserted, skipped_duplicates).
+    """Returns (new_inserted, updated_existing).
 
     Batched into a single transaction with executemany — at 6k rows this is
-    ~30x faster than per-row connections.
+    ~30x faster than per-row connections. Existing rows have their content
+    fields refreshed but enrichment and workflow state are preserved.
     """
-    rows = [
-        (
-            j.hash, j.source, j.company, j.title, j.location, j.url,
-            j.description, j.posted_at, j.salary_min, j.salary_max,
-            int(j.remote) if j.remote is not None else None,
-            j.sponsorship_status, int(j.prefilter_passed),
-            j.prefilter_reason, j.score_total, j.score_breakdown,
-            j.score_rationale, j.tier,
-            j.applied_at, j.notes, j.scraped_at,
-        )
-        for j in jobs
-    ]
-    if not rows:
+    job_list = list(jobs)
+    if not job_list:
         return 0, 0
+    rows = [_row_tuple(j) for j in job_list]
+    hashes = [j.hash for j in job_list]
     with conn() as c:
-        before = c.total_changes
-        c.executemany(
-            """
-            INSERT OR IGNORE INTO jobs (
-                hash, source, company, title, location, url, description,
-                posted_at, salary_min, salary_max, remote, sponsorship_status,
-                prefilter_passed, prefilter_reason, score_total, score_breakdown,
-                score_rationale, tier, applied_at, notes, scraped_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            rows,
-        )
-        new = c.total_changes - before
-    skipped = len(rows) - new
-    return new, skipped
+        # Pre-classify so we can return clear (new, updated) counts. SQLite's
+        # default SQLITE_MAX_VARIABLE_NUMBER is 32766 since 3.32, so a single
+        # IN (...) covers any realistic scrape batch.
+        placeholders = ",".join("?" * len(hashes))
+        existing = {
+            row[0]
+            for row in c.execute(
+                f"SELECT hash FROM jobs WHERE hash IN ({placeholders})", hashes
+            ).fetchall()
+        }
+        c.executemany(_UPSERT_SQL, rows)
+    new = sum(1 for h in hashes if h not in existing)
+    updated = len(hashes) - new
+    return new, updated
 
 
 SCORE_FAIL_DEAD_LETTER_THRESHOLD = 3

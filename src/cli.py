@@ -33,7 +33,7 @@ from .enrichment.prefilter import prefilter as run_prefilter
 from .enrichment.llm_scorer import score_job, make_client, compute_tier
 from .scrapers.runner import run_all_sync
 from .notify import notify_strong_fits as do_notify
-from .generate.resume import autogen_resume_if_missing
+from .resume import autogen_resume_if_missing
 
 console = Console()
 
@@ -59,8 +59,8 @@ def scrape():
     if not jobs:
         console.print("[yellow]no jobs returned[/]")
         return
-    new, skipped = db.upsert_many(jobs)
-    console.print(f"[green]scraped {len(jobs)} jobs[/]: [bold]{new} new[/], {skipped} skipped (duplicates)")
+    new, updated = db.upsert_many(jobs)
+    console.print(f"[green]scraped {len(jobs)} jobs[/]: [bold]{new} new[/], {updated} updated (existing)")
 
 
 @cli.command(name="prefilter")

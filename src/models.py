@@ -25,6 +25,21 @@ _TITLE_ABBREV = {
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
 
+def _normalize_url(s: str) -> str:
+    """Stable canonical form of a posting URL — lowercase, no fragment,
+    no trailing slash. Query string is preserved because for several ATSes
+    the job ID lives in it (e.g. greenhouse `?gh_jid=...`).
+    """
+    if not s:
+        return ""
+    s = s.strip().lower()
+    if "#" in s:
+        s = s.split("#", 1)[0]
+    while s.endswith("/"):
+        s = s[:-1]
+    return s
+
+
 def _normalize_for_hash(s: str) -> str:
     """Lowercase, expand common abbreviations, strip non-alphanumerics, collapse
     whitespace. Used by `Job.compute_hash` so superficial title variants
@@ -76,18 +91,23 @@ class Job:
             self.hash = self.compute_hash()
 
     def compute_hash(self) -> str:
-        """Stable identity. Same posting on two days = same hash.
+        """Stable identity. Same posting URL = same hash, regardless of how
+        the title or location string drifts between scrapes.
 
-        Inputs are normalized (lowercase, abbrev-expanded, punctuation-stripped,
-        whitespace-collapsed) before hashing, so superficial title variants
-        like 'Sr. Engineer' / 'Senior Engineer' / 'Senior  Engineer' all map
-        to the same hash and don't end up as separate rows.
+        URL is the canonical per-posting key (Greenhouse gh_jid, Lever UUID,
+        Ashby UUID, Workable shortcode, SmartRecruiters ID, Recruitee ID
+        all live in the URL). When a posting has no URL (rare — only the
+        legacy LinkedIn scraper hit this), fall back to the old composite
+        of normalized (source, company, title, location).
         """
-        key = "|".join(
-            _normalize_for_hash(part) for part in (
-                self.source, self.company, self.title, self.location
-            )
-        ).encode()
+        if self.url:
+            key = ("url|" + _normalize_url(self.url)).encode()
+        else:
+            key = "|".join(
+                _normalize_for_hash(part) for part in (
+                    self.source, self.company, self.title, self.location
+                )
+            ).encode()
         return hashlib.sha256(key).hexdigest()[:16]
 
     def to_dict(self) -> dict:

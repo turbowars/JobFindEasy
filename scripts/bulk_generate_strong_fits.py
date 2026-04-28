@@ -21,7 +21,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src import db
-from src.generate.resume import generate_resume, existing_resume_path
+from src.resume import generate_resume, existing_resume_path
 
 MAX_WORKERS = 3
 

@@ -59,33 +59,46 @@ def extract_keywords(
 ) -> dict:
     """Returns {required: [], preferred: [], soft: []}.
 
-    Returns empty dict on failure — generation can proceed without seeded
-    keywords (the existing skill-driven prompt is still in play).
+    Tries the API up to twice — keyword extraction is the foundation of the
+    ATS match score, so a transient 5xx/403 on the first call shouldn't
+    silently downgrade the rest of the pipeline. Failed calls are NOT
+    cached (lru_cache only stores successful returns), so a retry actually
+    hits the API again. Returns empty dict only after both attempts fail
+    (or both return malformed JSON).
     """
     if not jd_text or not jd_text.strip():
         return _empty()
     model = model or os.environ.get("SCORING_MODEL", "anthropic/claude-haiku-4.5")
-    try:
-        raw = _extract_cached(jd_cache_key, jd_text, model)
-    except Exception as e:
-        log.warning("ats keyword extract API error: %s", e)
-        return _empty()
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-    try:
-        parsed = json.loads(text)
-    except Exception as e:
-        log.warning("ats keyword extract JSON decode failed: %s | text=%s", e, text[:200])
-        return _empty()
-    return {
-        "required": _clean_list(parsed.get("required")),
-        "preferred": _clean_list(parsed.get("preferred")),
-        "soft": _clean_list(parsed.get("soft")),
-    }
+    last_err: Optional[str] = None
+    for attempt in (1, 2):
+        try:
+            raw = _extract_cached(jd_cache_key, jd_text, model)
+        except Exception as e:
+            last_err = str(e)
+            log.warning("ats keyword extract attempt %d failed: %s", attempt, e)
+            continue
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.startswith("json"):
+                text = text[4:]
+            text = text.strip()
+        try:
+            parsed = json.loads(text)
+        except Exception as e:
+            last_err = f"json decode: {e}"
+            log.warning(
+                "ats keyword extract attempt %d JSON decode failed: %s | text=%s",
+                attempt, e, text[:200],
+            )
+            continue
+        return {
+            "required": _clean_list(parsed.get("required")),
+            "preferred": _clean_list(parsed.get("preferred")),
+            "soft": _clean_list(parsed.get("soft")),
+        }
+    log.warning("ats keyword extract gave up after 2 attempts: %s", last_err)
+    return _empty()
 
 
 def match_keywords(

@@ -10,26 +10,18 @@ Never alter companies, titles, dates, or metrics. These are locked.
 
 - **Name:** Dheeraj Sampath
 - **Location:** Austin, TX
-- **Phone:** 512-843-2081
-- **Email:** dheeraj26engineer@gmail.com
+- **Phone:** 248-873-8929
+- **Email:** dheerajsampath@proton.me
 - **LinkedIn:** linkedin.com/in/evolvingdx
 - **Portfolio:** dheerajsampath.com
 
 ---
 
-## Default Headline (override per JD using Step 1 of SKILL.md)
-
-```
-Senior Staff Frontend Engineer  |  Staff Product Engineer  |  Principal Frontend Engineer
-```
-
----
-
 ## Professional Summary (template)
 
-Staff-level frontend engineer with 15+ years architecting and shipping production web platforms serving 10M+ users across consumer, fintech, ed-tech, and enterprise SaaS. Deep specialization in React, Next.js, TypeScript, Angular, micro-frontend platforms, design systems, and developer experience (DX) tooling, with recent focus on LLM-powered developer tooling, RAG pipelines, and AI-augmented product workflows using Anthropic Claude, OpenAI, MCP, and the Vercel AI SDK. Hands-on across the stack including Node.js, Express, Go, Python, PostgreSQL, MongoDB, DynamoDB, AWS (Lambda, S3, EC2, ECS, SQS, SNS, EventBridge, API Gateway), GCP (Cloud Run, Pub/Sub, BigQuery, Firestore), and Vercel. Operates at Staff / Principal scope: sets technical direction, writes the load-bearing code, authors RFCs, and raises the engineering bar across distributed, multi-timezone teams. H-1B with approved I-140 and AC21 portability.
+Staff-level frontend engineer with 15+ years architecting and shipping production web platforms serving 10M+ users across consumer, fintech, ed-tech, and enterprise SaaS. Deep specialization in React, Next.js, TypeScript, Angular, micro-frontend platforms, design systems, and developer experience (DX) tooling, with recent focus on LLM-powered developer tooling, RAG pipelines, and AI-augmented product workflows using Anthropic Claude, OpenAI, MCP, and the Vercel AI SDK. Hands-on across the stack including Node.js, Express, Go, Python, PostgreSQL, MongoDB, DynamoDB, AWS (Lambda, S3, EC2, ECS, SQS, SNS, EventBridge, API Gateway), GCP (Cloud Run, Pub/Sub, BigQuery, Firestore), and Vercel. Operates at Staff / Principal scope: sets technical direction, writes the load-bearing code, authors RFCs, and raises the engineering bar across distributed, multi-timezone teams.
 
-**Rewrite for each JD** following the Step 2b summary-line guardrail in SKILL.md. Keep the I-140/AC21 line.
+**Rewrite for each JD** following the Step 1b summary-line guardrail in SKILL.md.
 
 ---
 
@@ -77,7 +69,7 @@ Staff-level frontend engineer with 15+ years architecting and shipping productio
 
 ### Equifax · Tech Lead, Frontend Platform (IC Staff scope) · Austin, TX · Aug 2022 – Present
 
-*Own the React and TypeScript micro-frontend platform powering the consumer-facing product suite across Equifax's regulated consumer identity and credit domain. Operate as the platform IC setting technical direction across three product teams, authoring RFCs, writing the load-bearing code, and raising the technical bar through pairing and code review.*
+_Own the React and TypeScript micro-frontend platform powering the consumer-facing product suite across Equifax's regulated consumer identity and credit domain. Operate as the platform IC setting technical direction across three product teams, authoring RFCs, writing the load-bearing code, and raising the technical bar through pairing and code review._
 
 - Shipped the Module Federation–based micro-frontend platform that lets three product teams release independently against a shared design-token system and contract-tested component library. Cut build cycles 25% and eliminated cross-team release blockers.
 - Designed and built an internal developer platform (CLI scaffolding, ephemeral preview environments, and shared CI templates) in Go and Node.js, deployed on AWS ECS Fargate with Terraform-managed infrastructure. Reduced new-service onboarding from days to under an hour.
@@ -96,7 +88,7 @@ Staff-level frontend engineer with 15+ years architecting and shipping productio
 
 ### Midigator (acquired by Equifax) · Frontend Architect (IC) · Austin, TX · Feb 2022 – Aug 2022
 
-*Led frontend architecture at Midigator, a payment-dispute and chargeback-management SaaS serving enterprise merchants. Hands-on IC responsible for the embeddable partner SDK, the core React dashboard, and the design-system foundation that carried forward into the Equifax acquisition.*
+_Led frontend architecture at Midigator, a payment-dispute and chargeback-management SaaS serving enterprise merchants. Hands-on IC responsible for the embeddable partner SDK, the core React dashboard, and the design-system foundation that carried forward into the Equifax acquisition._
 
 - Architected an embeddable React SDK for partner platforms with full Shadow DOM isolation, runtime theming via CSS custom properties, a TypeScript-typed event bus, and a minimal-footprint Rollup bundle with tree-shaken React. Shipped into four partner integrations within the first quarter.
 - Designed the micro-frontend composition layer and shared design system that carried forward as the reference implementation for the combined Equifax and Midigator frontend platform post-acquisition.
@@ -110,7 +102,7 @@ Staff-level frontend engineer with 15+ years architecting and shipping productio
 
 ### TA Digital, USA (Adobe Platinum Partner) · UI Architect (IC) · Minneapolis, MN · Sep 2019 – Feb 2022
 
-*Relocated from India in September 2019 to join TA Digital's US entity as UI Architect. Operated as the onshore IC architect across two enterprise engagements (AARP in Michigan and Strategic Education Inc. in Minneapolis), leading frontend architecture, performance engineering, accessibility, and multi-brand component system work while staying ~70% hands-on in code.*
+_Relocated from India in September 2019 to join TA Digital's US entity as UI Architect. Operated as the onshore IC architect across two enterprise engagements (AARP in Michigan and Strategic Education Inc. in Minneapolis), leading frontend architecture, performance engineering, accessibility, and multi-brand component system work while staying ~70% hands-on in code._
 
 **Strategic Education Inc.: Strayer.com Redesign and Multi-Brand Design System (Dec 2019 – Feb 2022)**
 
@@ -142,7 +134,7 @@ Staff-level frontend engineer with 15+ years architecting and shipping productio
 
 ### TA Digital, India (Adobe Platinum Partner) · Principal Engineer (IC) · Hyderabad, India · Feb 2018 – Sep 2019
 
-*Joined TA Digital's India entity as Principal Engineer. Served as frontend IC architect and Scrum Master / Tech Lead across two global enterprise engagements (Bose and Fitbit) before being selected for the onshore UI Architect role in the US.*
+_Joined TA Digital's India entity as Principal Engineer. Served as frontend IC architect and Scrum Master / Tech Lead across two global enterprise engagements (Bose and Fitbit) before being selected for the onshore UI Architect role in the US._
 
 **Fitbit: Global Website Redesign (Oct 2018 – Sep 2019)**
 
@@ -165,7 +157,7 @@ Staff-level frontend engineer with 15+ years architecting and shipping productio
 
 ### nowfloats · Principal Engineer (UI / UX) · Hyderabad, India · Mar 2017 – Feb 2018
 
-*Owned frontend architecture for the nowfloats web platform, a consumer and merchant product serving 10M+ small-and-medium business (SMB) merchants across India and Southeast Asia. Led a 12-engineer UI team while staying deeply hands-on in architecture and platform code.*
+_Owned frontend architecture for the nowfloats web platform, a consumer and merchant product serving 10M+ small-and-medium business (SMB) merchants across India and Southeast Asia. Led a 12-engineer UI team while staying deeply hands-on in architecture and platform code._
 
 - Architected the mobile-first Progressive Web App (PWA) that SMB merchants used to manage their digital storefronts on low-end Android devices over unreliable networks. Implemented offline-first sync, service workers, and background sync queues.
 - Built the real-time merchant dashboard using WebSockets and Redis pub/sub for live order, inquiry, and chat notifications. Designed the reconnection, backoff, and message-replay protocol for mobile networks that drop connections frequently.
@@ -179,7 +171,7 @@ Staff-level frontend engineer with 15+ years architecting and shipping productio
 
 ### Deloitte Digital Studio · Senior Engineer, Frontend / UI · Mumbai, India · Aug 2014 – Mar 2017
 
-*Shipped responsive web and hybrid-mobile experiences for Fortune 500 retail, energy, telecommunications, and financial-services clients out of the Deloitte Digital Mumbai studio. Functioned as a senior IC and mentor across multiple parallel engagements, contributing to the studio's internal UI framework and reusable component library.*
+_Shipped responsive web and hybrid-mobile experiences for Fortune 500 retail, energy, telecommunications, and financial-services clients out of the Deloitte Digital Mumbai studio. Functioned as a senior IC and mentor across multiple parallel engagements, contributing to the studio's internal UI framework and reusable component library._
 
 - Traveled across Deloitte's India and overseas client sites to embed with delivery teams, establish code-stability practices, and train engineers on modern frontend patterns. Set cross-studio norms on linting, reviews, and testing.
 - Introduced Handlebars templating for shared HTML rendering across projects. Standardized template structure so the same markup could be served from Node.js and .NET backends.
@@ -199,7 +191,7 @@ Staff-level frontend engineer with 15+ years architecting and shipping productio
 
 ### Neudesic (Microsoft Gold Partner) · Consultant, UX and Frontend Engineering · Hyderabad, India · May 2012 – Aug 2014
 
-*Delivered enterprise web applications and branded CMS solutions across retail, financial services, government, healthcare, and consumer-electronics clients on the Microsoft stack. Functioned as hands-on IC and emerging tech lead across 15+ client engagements in just over two years.*
+_Delivered enterprise web applications and branded CMS solutions across retail, financial services, government, healthcare, and consumer-electronics clients on the Microsoft stack. Functioned as hands-on IC and emerging tech lead across 15+ client engagements in just over two years._
 
 - Programmed a custom sticky-browser jQuery scrollbar plugin that earned direct client recognition and was reused across multiple engagements.
 - Introduced LESS CSS and Twitter Bootstrap as the UX India region's standard frontend stack, baseline for future client engagements across the Hyderabad practice.

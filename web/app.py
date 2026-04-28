@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 
 from src import db, state  # noqa: E402
 from src.generate.cover_letter import expected_cover_letter_path  # noqa: E402
-from src.generate.resume import (  # noqa: E402
+from src.resume import (  # noqa: E402
     expected_resume_path,
     existing_resume_path,
 )
@@ -620,8 +620,8 @@ def api_jobs_json(show_rejects: bool = False):
             "title": r.get("title") or "",
             "company": r.get("company") or "",
             "location": r.get("location") or "",
-            "salary_min": r.get("salary_min"),
-            "salary_max": r.get("salary_max"),
+            "salary_min": _clean(r.get("salary_min")),
+            "salary_max": _clean(r.get("salary_max")),
             "remote": bool(r.get("remote")) if r.get("remote") is not None else None,
             "sponsorship": r.get("sponsorship_status") or "unknown",
             "posted": (str(r.get("posted_at") or ""))[:10],

@@ -30,7 +30,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Optional
 
 from .generate.cover_letter import generate_cover_letter
-from .generate.resume import generate_resume
+from .resume import generate_resume
 
 log = logging.getLogger(__name__)
 
@@ -141,7 +141,7 @@ def _autoscrape_loop_factory():
     from . import db
     from .enrichment.llm_scorer import compute_tier, make_client, score_job
     from .enrichment.prefilter import prefilter as run_prefilter
-    from .generate.resume import autogen_resume_if_missing
+    from .resume import autogen_resume_if_missing
     from .scrapers.runner import run_all_sync
     import json
 
@@ -280,7 +280,7 @@ def submit_all_missing_strong_fits(min_score: int = 80) -> int:
     """Queue resume generation for every strong-fit job that doesn't already
     have a resume on disk. Returns count submitted."""
     from . import db
-    from .generate.resume import existing_resume_path
+    from .resume import existing_resume_path
 
     df = db.to_dataframe()
     if df.empty:

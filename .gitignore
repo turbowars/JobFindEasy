@@ -21,6 +21,7 @@ env/
 
 # SQLite database
 data/jobs.db
+data/jobs.db.*
 data/exports/
 data/run-*.log
 data/launchd-stdout.log
