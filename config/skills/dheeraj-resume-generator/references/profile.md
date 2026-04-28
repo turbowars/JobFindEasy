@@ -1,6 +1,9 @@
-# IC Profile — Staff / Principal / Tech Lead Track
+# Profile — Dheeraj Sampath
 
-Source of truth for all IC-track resume generation (Staff Frontend, Principal Frontend, Staff Product, Principal Product, Full Stack variants, Tech Lead variants, Software Engineer, Web Platform Engineer).
+Source of truth for all resume generation.
+
+- **Engineering track**: Staff Frontend, Principal Frontend, Staff Product, Principal Product, Full Stack variants, Tech Lead variants, Software Engineer, Web Platform Engineer
+- **Management track**: Engineering Manager (any domain suffix), Software EM, Frontend EM, Full Stack EM, Product EM, Web Platform EM, Growth EM, Director of Engineering, VP Engineering, Head of Engineering
 
 Never alter companies, titles, dates, or metrics. These are locked.
 
@@ -9,27 +12,36 @@ Never alter companies, titles, dates, or metrics. These are locked.
 ## Contact
 
 - **Name:** Dheeraj Sampath
-- **Location:** Austin, TX
+- **Location:** Austin, TX 78759
 - **Phone:** 248-873-8929
 - **Email:** dheerajsampath@proton.me
 - **LinkedIn:** linkedin.com/in/evolvingdx
 - **Portfolio:** dheerajsampath.com
+- **GitHub:** github.com/turbowars
 
 ---
 
-## Professional Summary (template)
+## Professional Summary Templates
 
+Rewrite for each JD following the Step 1b guardrail in SKILL.md.
+
+**Engineering track:**
 Staff-level frontend engineer with 15+ years architecting and shipping production web platforms serving 10M+ users across consumer, fintech, ed-tech, and enterprise SaaS. Deep specialization in React, Next.js, TypeScript, Angular, micro-frontend platforms, design systems, and developer experience (DX) tooling, with recent focus on LLM-powered developer tooling, RAG pipelines, and AI-augmented product workflows using Anthropic Claude, OpenAI, MCP, and the Vercel AI SDK. Hands-on across the stack including Node.js, Express, Go, Python, PostgreSQL, MongoDB, DynamoDB, AWS (Lambda, S3, EC2, ECS, SQS, SNS, EventBridge, API Gateway), GCP (Cloud Run, Pub/Sub, BigQuery, Firestore), and Vercel. Operates at Staff / Principal scope: sets technical direction, writes the load-bearing code, authors RFCs, and raises the engineering bar across distributed, multi-timezone teams.
 
-**Rewrite for each JD** following the Step 1b summary-line guardrail in SKILL.md.
+**Management track:**
+Engineering manager with 15+ years delivering scalable, user-centric platforms and leading high-performing global teams in agile, distributed environments. Skilled at growth-focused technical strategy, architectural design, and cross-functional collaboration. Deep specialization in React, TypeScript, micro-frontend platforms, and developer experience tooling, with recent focus on LLM-powered developer workflows and AI-augmented delivery. Passionate about empowering engineers and building inclusive cultures.
 
 ---
 
-## Core Technical Skills (full block)
+## Skills
+
+### Engineering track (full technical block)
+
+Trim to 10 to 14 lines per JD; reorder so the categories the JD cares about most appear first.
 
 **Languages:** TypeScript, JavaScript (ES2023), Go, Python, HTML5, CSS3, SQL, GraphQL, Bash, C#, Java
 
-**Frontend Frameworks & Libraries:** React 18, Next.js 14 (App Router, Server Actions, RSC, ISR, SSR, SSG), React Server Components, Angular (2+ through 17), AngularJS, Redux, Redux Toolkit, TanStack Query, Zustand, RxJS, NgRx, Vue.js, Svelte, jQuery, Knockout.js, Handlebars, Web Components, Lit, Stencil
+**Frontend Frameworks & Libraries:** React 18, Next.js 14 (App Router, Server Actions, RSC, ISR, SSR, SSG), React Server Components, Angular (2 through 19), AngularJS, Redux, Redux Toolkit, TanStack Query, Zustand, RxJS, NgRx, Vue.js, Svelte, jQuery, Knockout.js, Handlebars, Web Components, Lit, Stencil, Solidity, web3
 
 **Build Tools, Bundlers & Monorepos:** Vite, Webpack 5, Turbopack, Rollup, esbuild, Module Federation, Nx, Turborepo, Lerna, pnpm workspaces, Yarn workspaces, Grunt, Gulp, Babel, SWC, TypeScript Project References
 
@@ -63,11 +75,27 @@ Staff-level frontend engineer with 15+ years architecting and shipping productio
 
 **Collaboration & Delivery:** Technical RFCs, architecture reviews, code reviews, design reviews, cross-geo team coordination, Agile (Scrum, Kanban), SAFe, Jira, Confluence, Linear, Notion, stakeholder communication, hiring loops, onboarding playbooks, mentorship at staff and senior IC levels
 
+### Management track
+
+- **Engineering Leadership:** People management, hiring, mentorship, technical strategy, cross-functional alignment, roadmap ownership, stakeholder communication
+- **Frontend:** React, TypeScript, JavaScript, Angular, Vue, Redux, Zustand, Zod, Module Federation, micro-frontends, Next.js, SPA architecture
+- **Backend & Languages:** Node.js, Python (FastAPI, Flask), Java (Spring, Spring Boot), Go, REST, GraphQL, gRPC, event-driven services
+- **Platform:** CI/CD, developer tooling, design systems, scalable architecture, distributed systems, BFF patterns
+- **Cloud & Infra:** AWS (Lambda, ECS, S3, EventBridge), GCP, Docker, Kubernetes, Terraform, security, compliance (SOC 2, GLBA, CCPA)
+- **DevOps & Data:** Docker, Kubernetes, Helm, GitHub Actions, ArgoCD, Apache Airflow, data pipeline orchestration, observability (Datadog, OpenTelemetry)
+- **AI / LLM:** Anthropic Claude API, OpenAI API, MCP, RAG architectures, semantic search, vector databases, embeddings, agentic workflows, AI-augmented developer workflows
+- **Process & Delivery:** Agile, Scrum, Kanban, SAFe, SDLC, KPI dashboards, hiring loops, onboarding playbooks
+
 ---
 
 ## Professional Experience
 
-### Equifax · Tech Lead, Frontend Platform (IC Staff scope) · Austin, TX · Aug 2022 – Present
+### Equifax · Austin, TX · Aug 2022 – Present
+
+**Engineering track title:** Tech Lead
+**Management track title:** Engineering Lead
+
+#### Engineering track
 
 _Own the React and TypeScript micro-frontend platform powering the consumer-facing product suite across Equifax's regulated consumer identity and credit domain. Operate as the platform IC setting technical direction across three product teams, authoring RFCs, writing the load-bearing code, and raising the technical bar through pairing and code review._
 
@@ -82,27 +110,55 @@ _Own the React and TypeScript micro-frontend platform powering the consumer-faci
 - Designed the feature-flag and progressive-delivery architecture on LaunchDarkly with typed flag definitions generated from a central schema. Enabled trunk-based development and safe canary rollouts across all three product teams.
 - Authored the RFCs and ran the architecture reviews that shaped platform direction across the three teams. Mentored senior and staff-track ICs through pairing, design reviews, and written architectural coaching.
 
-**Stack:** React 18, Next.js 14, TypeScript, Module Federation, Angular (2-19), Node.js, Go, GraphQL (Apollo), PostgreSQL, DynamoDB, Redis, AWS (Lambda, ECS, S3, EC2, CloudFront, API Gateway, SQS, SNS, EventBridge, RDS), GCP (Cloud Run, Pub/Sub, BigQuery), Cloudflare Workers, Terraform, Docker, Kubernetes, Datadog, Sentry, OpenTelemetry, LaunchDarkly.
+**Stack:** React 18, Next.js 14, TypeScript, Module Federation, Angular (2-20), Node.js, Go, GraphQL (Apollo), PostgreSQL, DynamoDB, Redis, AWS (Lambda, ECS, S3, EC2, CloudFront, API Gateway, SQS, SNS, EventBridge, RDS), GCP (Cloud Run, Pub/Sub, BigQuery), Cloudflare Workers, Terraform, Docker, Kubernetes, Datadog, Sentry, OpenTelemetry, LaunchDarkly.
+
+#### Management track
+
+- Led front-end architecture and program strategy, partnering with 3 cross-functional teams
+- Directed governance for 10+ major launches with 100% on-time delivery and on-budget execution
+- Redesigned front-end architecture and developer tooling, improving scalability and user satisfaction by 50%
+- Increased project delivery efficiency by 35% through structured cross-functional coordination
+- Standardized React and micro front-end platform, reducing build cycles by 25%
+- Bridged product, design, and engineering alignment, cutting rework by 20%
+- Shipped Module Federation platform letting 3 product teams release independently
+- Built LLM-powered code-review assistant (Anthropic Claude API), adopted by 40+ engineers; cut post-merge defects ~30%
+- Authored RFCs and ran architecture reviews across three teams; mentored senior and staff-track ICs
 
 ---
 
-### Midigator (acquired by Equifax) · Frontend Architect (IC) · Austin, TX · Feb 2022 – Aug 2022
+### Midigator (acquired by Equifax) · Austin, TX · Feb 2022 – Aug 2022
+
+**Engineering track title:** Frontend Architect
+**Management track title:** Frontend Architect
+
+#### Engineering track
 
 _Led frontend architecture at Midigator, a payment-dispute and chargeback-management SaaS serving enterprise merchants. Hands-on IC responsible for the embeddable partner SDK, the core React dashboard, and the design-system foundation that carried forward into the Equifax acquisition._
 
 - Architected an embeddable React SDK for partner platforms with full Shadow DOM isolation, runtime theming via CSS custom properties, a TypeScript-typed event bus, and a minimal-footprint Rollup bundle with tree-shaken React. Shipped into four partner integrations within the first quarter.
 - Designed the micro-frontend composition layer and shared design system that carried forward as the reference implementation for the combined Equifax and Midigator frontend platform post-acquisition.
 - Redesigned the BFF contract with the backend team (Node.js and PostgreSQL) to collapse three REST round-trips into a single GraphQL query. Cut dashboard Time-to-Interactive from 4.2s to 1.6s and materially reduced backend load.
-- Introduced Cypress end-to-end tests and Vitest unit-coverage gates in CI (GitHub Actions). Regression escapes dropped ~60% and the team moved to trunk-based deploys.
+- Introduced Playwright end-to-end tests and Vitest unit-coverage gates in CI (GitHub Actions). Regression escapes dropped ~60% and the team moved to trunk-based deploys.
 - Built the theming and tokenization layer for the embeddable components so partners could brand the experience without forking; shipped as a runtime theming API backed by design-token JSON and Style Dictionary output.
 
-**Stack:** React, TypeScript, emotion, GraphQL (Apollo), Rollup, Shadow DOM, Node.js, PostgreSQL, MongoDB, AWS (Lambda, S3, EC2, DynamoDB, SQS), Cypress, Vitest, Storybook.
+**Stack:** React, TypeScript, Redux Toolkit, TanStack Query, GraphQL (Apollo), Rollup, Shadow DOM, Node.js, PostgreSQL, MongoDB, AWS (Lambda, S3, EC2, DynamoDB, SQS), Playwright, Vitest, Storybook.
+
+#### Management track
+
+- Managed front-end architecture and program delivery across cross-functional teams
+- Launched embeddable React UI platforms, improving user activation and time-to-market
+- Implemented advanced theming and design systems in micro front-ends
+- Cut time-to-market by 35% through rapid prototyping and workflow optimization
+- Cultivated collaborative engineering culture through structured mentorship
+- Managed resource planning across two teams
 
 ---
 
-### TA Digital, USA (Adobe Platinum Partner) · UI Architect (IC) · Minneapolis, MN · Sep 2019 – Feb 2022
+### TA Digital (Adobe Platinum Partner) · UI Architect · Minneapolis, MN · Sep 2019 – Feb 2022
 
-_Relocated from India in September 2019 to join TA Digital's US entity as UI Architect. Operated as the onshore architect across two enterprise engagements (AARP in Michigan and Strategic Education Inc. in Minneapolis), leading frontend architecture, performance engineering, accessibility, and multi-brand component system work while staying ~70% hands-on in code._
+#### Engineering track
+
+_Relocated from India in September 2019 to join TA Digital's US entity as UI Architect. Operated as the onshore IC architect across two enterprise engagements (AARP in Michigan and Strategic Education Inc. in Minneapolis), leading frontend architecture, performance engineering, accessibility, and multi-brand component system work while staying ~70% hands-on in code._
 
 **Strategic Education Inc.: Strayer.com Redesign and Multi-Brand Design System (Dec 2019 – Feb 2022)**
 
@@ -128,13 +184,24 @@ _Relocated from India in September 2019 to join TA Digital's US entity as UI Arc
 - Introduced TypeScript, Storybook, design-system patterns, and Lighthouse-based performance regression gates across client teams. Standardized CI/CD on Jenkins and GitHub Actions.
 - Prototyped ML-assisted personalization (product ranking and content recommendations) integrating vendor APIs with custom React rendering; a direct precursor to current LLM and RAG work.
 
-**Stack:** Adobe Experience Manager (AEM 6.x), React, Angular, TypeScript, JavaScript (ES6+), SASS, LESS, Node.js, REST APIs, PostgreSQL, Adobe Target, Adobe Analytics, Adobe Launch, Lighthouse, Jest, Jasmine, Jenkins, GitHub Actions, Git, Bitbucket, Jira, Confluence, AWS (S3, CloudFront, Lambda).
+**Stack:** Adobe Experience Manager (AEM 6.x), React, Angular, TypeScript, JQuery, JavaScript (ES6+), SASS, LESS, Node.js, REST APIs, PostgreSQL, Adobe Target, Adobe Analytics, Adobe Launch, Lighthouse, Jest, Jasmine, Jenkins, GitHub Actions, Git, Bitbucket, Jira, Confluence, AWS (S3, CloudFront, Lambda).
+
+#### Management track
+
+- Orchestrated development of innovative single-page applications across two enterprise engagements (AARP, Strategic Education Inc.)
+- Improved page load speeds by 400% by standardizing SPA frameworks
+- Drove adoption of scalable AI solutions, boosting delivery quality and feature velocity by 30%
+- Reduced turnaround times by 25% through agile process improvements
+- Led system acceptance testing ensuring 100% technical and business alignment
+- Operated as onshore technical bridge for a distributed team across time zones
 
 ---
 
-### TA Digital, India (Adobe Platinum Partner) · Principal Engineer (IC) · Hyderabad, India · Feb 2018 – Sep 2019
+### TA Digital (Adobe Platinum Partner) · Principal Engineer · Hyderabad, India · Feb 2018 – Sep 2019
 
-_Joined TA Digital's India entity as Principal Engineer. Served as frontend IC architect and Scrum Master / Tech Lead across two global enterprise engagements (Bose and Fitbit) before being selected for the onshore UI Architect role in the US._
+#### Engineering track
+
+_Joined TA Digital's India entity as Principal Engineer. Served as frontend architect and Scrum Master / Tech Lead across two global enterprise engagements (Bose and Fitbit) before being selected for the onshore UI Architect role in the US._
 
 **Fitbit: Global Website Redesign (Oct 2018 – Sep 2019)**
 
@@ -151,11 +218,20 @@ _Joined TA Digital's India entity as Principal Engineer. Served as frontend IC a
 - Wrote rigorous Jest and Jasmine unit and integration tests covering auth flows, token handling, session state, and error paths. Implemented comprehensive try/catch around every API boundary with polished error states for network timeouts, invalid credentials, expired sessions, and upstream service degradation.
 - Established testing and error-handling patterns on this engagement that carried forward as a standard across Fitbit, AARP, and Strategic Education Inc., and became a signature of the delivery style at TA Digital.
 
-**Stack (India tenure):** Adobe Experience Manager (AEM 6.x), JavaScript (ES6+), jQuery, HTML5, CSS3, SASS, responsive design, Okta, REST APIs, Jest, Jasmine, Karma, Git, Bitbucket, Jira, Jenkins.
+**Stack:** Adobe Experience Manager (AEM 6.x), JavaScript (ES6+), jQuery, HTML5, CSS3, SASS, responsive design, Okta, REST APIs, Jest, Jasmine, Karma, Git, Bitbucket, Jira, Jenkins.
+
+#### Management track
+
+- Served as Scrum Master and Tech Lead of a 14-person cross-functional team on the Fitbit global website redesign
+- Shipped redesign on time with zero P0/P1 defects at launch after the program had stalled twice
+- Reduced sprint carryover 35 to 40% and cut late-stage rework ~50%
+- Architected frontend auth layer for Bose (Okta-integrated login, signup, password reset, session management)
 
 ---
 
-### nowfloats · Principal Engineer (UI / UX) · Hyderabad, India · Mar 2017 – Feb 2018
+### nowfloats · Principal Engineer · Hyderabad, India · Mar 2017 – Feb 2018
+
+#### Engineering track
 
 _Owned frontend architecture for the nowfloats web platform, a consumer and merchant product serving 10M+ small-and-medium business (SMB) merchants across India and Southeast Asia. Led a 12-engineer UI team while staying deeply hands-on in architecture and platform code._
 
@@ -167,9 +243,15 @@ _Owned frontend architecture for the nowfloats web platform, a consumer and merc
 
 **Stack:** React, AngularJS, TypeScript, Node.js, Express, WebSockets, MongoDB, MySQL, Redis, Webpack, Service Workers, PWA, Android WebView.
 
+#### Management track
+
+- Led a 12-member UX/UI engineering team delivering web applications serving 10M+ SMB merchants
+- Set the hiring bar, technical interview loop, and onboarding playbook; grew team from 5 to 12 without regressing velocity
+- Architected the mobile-first PWA for low-end Android devices with offline-first sync
+
 ---
 
-### Deloitte Digital Studio · Senior Engineer, Frontend / UI · Mumbai, India · Aug 2014 – Mar 2017
+### Deloitte Digital Studio · Senior Engineer · Mumbai, India · Aug 2014 – Mar 2017
 
 _Shipped responsive web and hybrid-mobile experiences for Fortune 500 retail, energy, telecommunications, and financial-services clients out of the Deloitte Digital Mumbai studio. Functioned as a senior IC and mentor across multiple parallel engagements, contributing to the studio's internal UI framework and reusable component library._
 
@@ -187,9 +269,11 @@ _Shipped responsive web and hybrid-mobile experiences for Fortune 500 retail, en
 
 **Stack:** AngularJS, JavaScript (ES5, ES6), Handlebars, jQuery, HTML5, CSS3, SASS, LESS, Bootstrap, Adobe Experience Manager (AEM), Node.js, REST APIs, .NET integrations, SQL Server, Git, TFS, Grunt, Gulp, Karma, Jasmine.
 
+_(Management track: title line only)_
+
 ---
 
-### Neudesic (Microsoft Gold Partner) · Consultant, UX and Frontend Engineering · Hyderabad, India · May 2012 – Aug 2014
+### Neudesic (Microsoft Gold Partner) · Consultant · Hyderabad, India · May 2012 – Aug 2014
 
 _Delivered enterprise web applications and branded CMS solutions across retail, financial services, government, healthcare, and consumer-electronics clients on the Microsoft stack. Functioned as hands-on IC and emerging tech lead across 15+ client engagements in just over two years._
 
@@ -210,15 +294,38 @@ _Delivered enterprise web applications and branded CMS solutions across retail, 
 
 **Stack:** HTML5, CSS3, LESS, SASS, JavaScript (ES5), jQuery, jQuery Mobile, jQuery UI, Knockout.js, Highcharts, D3.js, Bootstrap, FuelUX, SharePoint 2010 / 2013, ASP.NET, C#, Windows 8 (WinJS), HTML5 offline storage, XML, XSLT.
 
+_(Management track: title line only)_
+
 ---
 
-## Selected Projects (optional section, surface 3 to 5 most relevant to JD)
+## Selected Projects (Engineering track)
+
+Surface 3 to 5 most relevant to the JD.
 
 - **AI Code Review Agent:** Next.js 14 plus the Anthropic Claude API and AST parsing. Autonomous PR reviewer that runs accessibility, security, and design-system checks. Running in production at Equifax and adopted by 40+ engineers.
-- **MCP-Powered Developer Assistant:** built a Model Context Protocol (MCP) server exposing internal documentation, design tokens, and component APIs to Claude Code so engineers can ask architectural questions directly in-editor.
+- **MCP-Powered Developer Assistant:** Built a Model Context Protocol (MCP) server exposing internal documentation, design tokens, and component APIs to Claude Code so engineers can ask architectural questions directly in-editor.
 - **RAG over Engineering Docs:** pgvector plus OpenAI embeddings and a FastAPI backend, with a streaming Next.js UI built on the Vercel AI SDK. Semantic search across 2,000+ internal architecture decision records (ADRs) and runbooks.
 - **Edge-Rendered Identity Flows:** Cloudflare Workers plus Hono, delivering sub-50ms TTFB globally for consumer-facing authentication screens.
 - **Multi-Brand Design-Token Pipeline:** Style Dictionary plus Storybook and Chromatic. The design-token architecture that backed the Strategic Education Inc. multi-brand system and informed later Midigator and Equifax work.
+
+---
+
+## Master Achievement Bullets (Management track)
+
+Use verbatim when tailoring Management-track resumes.
+
+1. Delivered complex platform and UI features in agile sprints, reducing release cycles 30% while improving system reliability.
+2. Built and executed strategic technical roadmaps, reducing bottlenecks by 40% and accelerating feature velocity.
+3. Scaled and mentored engineering teams through targeted, inclusive hiring, boosting productivity 20% and reducing attrition 15%.
+4. Secured $3.5M in funding by providing data-driven insights to leadership, accelerating technology strategy alignment.
+5. Redesigned front-end architecture and developer tooling at Equifax, improving scalability and user satisfaction by 50%.
+6. Standardized React and micro front-end platform, reducing build cycles 25% and raising developer productivity.
+7. Directed governance for 10+ major launches with 100% on-time delivery and on-budget execution.
+8. Cut time-to-market by 35% at Midigator through rapid prototyping and workflow optimization.
+9. Improved page load speeds 400% at TA Digital by standardizing SPA frameworks.
+10. Reduced rework by 20% and accelerated decision-making by bridging product, design, and engineering alignment.
+11. Built LLM-powered code-review assistant using Anthropic Claude API, adopted by 40+ engineers; cut post-merge defects ~30%.
+12. Shipped Fitbit global website redesign on time with zero P0/P1 defects after a year-long stalled program.
 
 ---
 
@@ -230,3 +337,23 @@ _Delivered enterprise web applications and branded CMS solutions across retail, 
 - Certified Scrum Master (CSM), Scrum Alliance
 - Certified Usability Analyst (CUA), Human Factors International
 - Microsoft Specialist, Programming in HTML5 with JavaScript and CSS3 (Exam 70-480)
+
+---
+
+## Quick Copy — Application Form Answers
+
+| Field              | Answer                                        |
+| ------------------ | --------------------------------------------- |
+| Name               | Dheeraj Sampath                               |
+| Email              | dheerajsampath@proton.me                      |
+| Phone              | 248-873-8929                                  |
+| Location           | Austin, TX 78759                              |
+| LinkedIn           | linkedin.com/in/evolvingdx                    |
+| Portfolio          | dheerajsampath.com                            |
+| GitHub             | github.com/turbowars                          |
+| Salary expectation | 190000                                        |
+| Sponsorship        | H-1B with approved I-140 and AC21 portability |
+| Veteran            | Not a veteran                                 |
+| Disability         | No disability                                 |
+| Race/Ethnicity     | Asian                                         |
+| Notice period      | 0                                             |

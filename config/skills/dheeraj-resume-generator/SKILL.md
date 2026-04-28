@@ -9,28 +9,17 @@ Tailored resume generation for modern ATS parsers (Workday, Greenhouse, Ashby, L
 
 ---
 
-## Writing Style Rules (apply to every output artifact)
+## Rules (apply to every output artifact)
 
-These apply to the `.docx` Dheeraj will send. They do NOT apply to this skill file or chat responses.
-
-- **No em dashes (—).** Ever. Replace with a period, comma, colon, semicolon, or parentheses, whichever reads cleanest.
-- **No en dashes (–) in prose.** The only exception is date ranges: `Aug 2022 – Present`.
-- Smart quotes (' ") for apostrophes are fine.
-- **Final pass:** grep the output text for `—` and `–` in prose and rewrite any hits before delivery.
-
----
-
-## Hard Rules (apply to every artifact)
-
-These supersede any conflicting instruction in later sections.
-
-1. **Canonical company names.** Always use these exact spellings for Dheeraj's previous employers:
-   - `Nowfloats Technologies Pvt Ltd`
-   - `Equifax`
-   - `Midigator`
-   - `TA Digital`
-   - `Deloitte Digital Studio`
-   - `Neudesic`
+- **No em dashes (—).** Ever. Replace with a period, comma, colon, semicolon, or parentheses.
+- **No en dashes (–) in prose.** Exception: date ranges only (`Aug 2022 – Present`).
+- **Canonical company names** — always use these exact spellings:
+  - `Nowfloats Technologies Pvt Ltd`
+  - `Equifax`
+  - `Midigator`
+  - `TA Digital`
+  - `Deloitte Digital Studio`
+  - `Neudesic`
 
 ---
 
@@ -48,16 +37,14 @@ If any are missing, ask. This skill does NOT produce a blank "master" resume. It
 
 ## Step 0: Choose the Profile
 
-Two profiles exist because Dheeraj uses different facets of his experience for engineering roles versus management roles.
-
-**Management profile** (`references/profile-em.md`) — use when the JD title primarily involves managing people:
+**Management profile** — use when the JD title primarily involves managing people:
 
 - Engineering Manager (any domain suffix: Product, Web Platform, Growth, Frontend, Full Stack, CX)
 - Software Engineering Manager
 - Director of Engineering, VP of Engineering, Head of Engineering
 - Any player-coach or hybrid where headcount management is the primary responsibility
 
-**Engineering profile** (`references/profile-ic.md`) — use for all other titles:
+**Engineering profile** — use for all other titles:
 
 - Any Frontend Engineer variant (Staff, Senior Staff, Principal)
 - Any Product Engineer or Full Stack Engineer variant
@@ -104,14 +91,14 @@ If these don't match, the resume reads mis-targeted even if every bullet is perf
 ### 1c: Summary template (3 to 5 lines)
 
 ```
-[Slot-1 noun phrase] with 15+ years [JD's core domain, phrased to match]. [Scope achievement aligned to JD priority #1]. [Stack line aligned to JD's named tools]. [Leadership / culture signal pulled from JD language].
+[JD target title noun phrase] with 15+ years [JD's core domain, phrased to match]. [Scope achievement aligned to JD priority #1]. [Stack line aligned to JD's named tools]. [Leadership / culture signal pulled from JD language].
 ```
 
 ---
 
 ## Step 2: Select and Rewrite Experience Bullets
 
-Load the chosen profile's reference file for the full bullet pool.
+Load `references/profile.md` and use the **Engineering track** or **Management track** bullet pool for the chosen profile.
 
 **Engineering profile — bullet budgets per role:**
 
@@ -185,7 +172,9 @@ When the JD target title is any Full Stack variant, reorder so backend and infra
 
 Use the `docx` skill (`/mnt/skills/public/docx/SKILL.md`) to produce the file.
 
-### Formatting (non-negotiable)
+Follow `references/template.md` for document structure: what's locked verbatim, what gets generated, and bullet budgets per role.
+
+### .docx formatting (non-negotiable)
 
 - **Single column only.** No two-column, sidebar, or multi-region layouts.
 - **No tables, text boxes, headers/footers, graphics, icons, or images.**
@@ -193,56 +182,8 @@ Use the `docx` skill (`/mnt/skills/public/docx/SKILL.md`) to produce the file.
 - **Font:** Calibri 11pt body, 12pt section headers, 14pt name. Arial, Helvetica, Georgia, or Times are acceptable alternatives.
 - **Line spacing:** 1.0. Space after paragraph: 6pt.
 - **Bullets:** standard `•` via `LevelFormat.BULLET` (never hardcoded Unicode). 0.2" indent.
-
-### Contact block (3 lines, plain text in document body — never in a Word header)
-
-```
-Dheeraj Sampath
-Austin, TX  |  248-873-8929  |  dheerajsampath@proton.me
-linkedin.com/in/evolvingdx  |  dheerajsampath.com  |  github.com/turbowars
-```
-
-Name on line 1 (14pt bold). Location/phone/email on line 2. Links on line 3.
-
-### Section headers (exact strings)
-
-- `Professional Summary`
-- `Core Technical Skills` (or `Skills`)
-- `Professional Experience` (or `Experience`)
-- `Selected Projects` (optional)
-- `Education & Certifications`
-
-### Dates
-
-Format: `MMM YYYY – MMM YYYY` (e.g., `Aug 2022 – Present`). The en dash inside date ranges is the only exception to the no-en-dash rule.
-
-### Equifax title line (title mirror)
-
-Apply to the Equifax role line only.
-
-**Engineering profile:**
-
-```
-[JD target title] (Tech Lead)
-```
-
-Example for "Staff Product Engineer":
-
-```
-Staff Product Engineer (Tech Lead)
-```
-
-**Management profile:**
-
-```
-[JD target title] (Engineering Lead)
-```
-
-Example for "Staff Product Engineer":
-
-```
-Staff Product Engineer (Engineering Lead)
-```
+- **Contact block in document body, not in a Word header.** Name on line 1 (14pt bold). Location/phone/email on line 2. Links on line 3.
+- **Dates:** `MMM YYYY – MMM YYYY` (e.g., `Aug 2022 – Present`). En dash in date ranges is the only exception to the no-en-dash rule.
 
 ### Filename
 
@@ -307,8 +248,8 @@ Before submitting:
 
 ## Reference Files
 
-- `references/profile-ic.md` — Engineering profile. Full bullet pool and Skills block for individual-contributor roles.
-- `references/profile-em.md` — Management profile. Full bullet pool and Skills block for management and director roles.
+- `references/template.md` — Resume skeleton. Shows every locked field verbatim and every generated field as a labeled placeholder.
+- `references/profile.md` — Bullet pool and Skills blocks for both tracks, plus contact, education, and Quick Copy answers.
 
 ---
 
