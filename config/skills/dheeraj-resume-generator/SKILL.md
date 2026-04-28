@@ -126,6 +126,17 @@ Load `references/profile.md` and use the **Engineering track** or **Management t
 - For platform-heavy JDs: elevate Module Federation, IDP (internal developer platform), and BFF bullets.
 - For product-heavy JDs: elevate Next.js 14 migration, LCP/TTI improvements, and user-facing feature bullets.
 
+**Bullet quality standards (apply to every bullet written or rewritten):**
+
+- **Quantify everything.** Every bullet must contain at least one number, percentage, scope, or named tool. Vague verbs with no outcome ("Worked on...", "Helped improve...") are not acceptable.
+  - Weak: "Analyzed sales data using SQL."
+  - Strong: "Analyzed 1M+ rows of sales data using SQL, cutting report processing time 50% and unblocking weekly business reviews."
+- **Two to three lines maximum.** If a bullet runs longer, split it or cut the least impactful clause.
+- **Lead with the action, close with the outcome.** Structure: `[Strong verb] + [what/how] + [measurable result or business impact]`.
+- **No orphan bullets.** Every bullet must stand alone. A reader should understand what was done and why it mattered without reading any other bullet.
+- **No grammatical or spelling errors.** Proofread every bullet before output; fix any that exist in the source material too.
+- **Mirror JD language.** If the JD says "developer velocity," use that phrase, not "engineering throughput."
+
 ---
 
 ## Step 3: Build the Skills Section

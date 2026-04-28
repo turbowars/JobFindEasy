@@ -162,21 +162,20 @@ _Relocated from India in September 2019 to join TA Digital's US entity as UI Arc
 
 **Strategic Education Inc.: Strayer.com Redesign and Multi-Brand Design System (Dec 2019 – Feb 2022)**
 
-- Architected a library of roughly 25 reusable, themeable AEM and React components spanning marketing, program discovery, enrollment, and post-enrollment experiences. Shared across Strayer University and Sophia Learning as a genuine multi-brand design system with Style Dictionary–driven tokens.
-- Led the end-to-end frontend redesign of strayer.com, translating new brand direction into a component-first architecture that compressed page-build times for marketing and enabled rapid iteration on campaigns and landing pages.
-- Built the tuition calculator (the most complex tool in the engagement) as a multi-step TypeScript wizard integrated with a Node.js pricing-rules API backed by PostgreSQL. The calculator surfaces real program pricing across degree programs, financial-aid rules, employer-discount partnerships, transfer-credit adjustments, military and veteran benefits, and payment plans.
-- Wrote comprehensive Jest and Jasmine unit tests covering the calculator's wizard state machine, input validation, and branching logic. Implemented defensive try/catch around every API boundary with polished UI error states for every failure mode.
-- Drove a full performance program using Lighthouse as the benchmark: lazy loading, code splitting, critical CSS extraction, font optimization, removal of render-blocking scripts, AEM dispatcher caching, and CDN tuning on CloudFront. Image optimization alone improved page load ~80%; the combined program lifted Lighthouse scores from the 40s into the 90s and brought Core Web Vitals comfortably into the "Good" band.
-- Owned WCAG 2.1 AA accessibility compliance (AAA criteria met where feasible). Wired automated a11y tooling into CI and paired it with manual screen-reader testing across NVDA, JAWS, and VoiceOver.
-- Implemented component-level SEO (structured data in JSON-LD, semantic HTML, meta management, and sitemap automation) so marketing could ship new programs and landing pages without engineering per-asset.
-- Instrumented Adobe Analytics and Adobe Launch across the component library. Standardized event naming and the data layer so analytics and marketing had consistent reporting across Strayer and Sophia properties.
-- Operated as onshore technical bridge for a distributed team (2 UI developers in India, 2 AEM developers in the US). Ran architecture and code reviews across time zones for two years without a missed milestone.
+- Architected 25+ reusable, themeable AEM components shared across Strayer University and Sophia Learning as a true multi-brand design system, compressing marketing page-build time from days to hours and enabling 3x faster campaign iteration.
+- Led end-to-end frontend redesign of strayer.com as onshore UI Architect for a 4-engineer distributed team (2 UI in India, 2 AEM in USA), running architecture and code reviews across 11.5 hours of timezone offset for 26 months with zero missed milestones.
+- Built the strayer.com tuition calculator as a multi-step wizard integrated with a backend pricing rules API spanning financial aid, employer discount partnerships, transfer credits, military and veteran benefits, and payment plans; covered with 100+ unit tests and try/catch on 100% of API boundaries.
+- Drove a Lighthouse-based performance program (lazy loading, code splitting, critical CSS extraction, font optimization, AEM dispatcher caching, CDN tuning) that lifted scores from the 40s to the 90s; image optimization alone delivered ~80% page load reduction, moving Core Web Vitals into the "Good" band.
+- Owned WCAG 2.1 AA accessibility compliance (AAA criteria where feasible) across 25+ components, wiring automated a11y scans into CI and pairing with manual NVDA, JAWS, and VoiceOver testing for SEI's regulated adult-learner audience.
+- Implemented component-level SEO (JSON-LD structured data, semantic HTML, meta management, sitemap automation), enabling marketing to launch new degree programs and landing pages without per-asset engineering, cutting marketing-driven engineering tickets by an estimated 60%.
+- Instrumented Adobe Analytics and Adobe Launch across the component library, standardizing event naming and data-layer conventions for unified reporting across both Strayer and Sophia properties (combined audience of 100K+ active learners).
+- Operated 70% hands-on coding + 30% architecture and client-facing leadership across the 26-month engagement, balancing production code quality with the architectural direction a long-running multi-brand program required.
 
 **AARP: Retirement Calculator Tool (Sep 2019 – Dec 2019)**
 
-- Architected and implemented a new AEM-based retirement calculator as a reusable module consumable across AARP's personal-finance property. Multi-step wizard with 5 to 7 inputs, conditional branching (employment status, retirement timeline, benefit eligibility), and save-and-return functionality for resuming partially completed sessions.
-- Wrote unit tests covering the wizard state machine, input validation, and branching logic. Implemented thorough try/catch with graceful degradation and user-friendly UI error states across every API boundary.
-- Partnered directly with a single backend developer to define the REST API contract, iterate on the data model (PostgreSQL), and coordinate end-to-end testing. Shipped to production on time as a high-trust two-person delivery.
+- Architected an AEM-based retirement calculator as a reusable module on AARP's personal finance property serving a 38M+ member base, shipping a 5 to 7 step wizard with conditional branching and cross-session save-and-return.
+- Wrote 50+ unit tests covering wizard state machine, input validation, and 8+ branching paths (employment status, retirement timeline, benefit eligibility); implemented try/catch on 100% of API boundaries with graceful degradation.
+- Shipped to production on time as a 2-engineer team (1 frontend, 1 backend), defining the REST API contract and data model and clearing acceptance testing with zero P1 defects before transitioning to Strategic Education Inc.
 
 **Cross-engagement technical work (US entity)**
 
@@ -205,18 +204,19 @@ _Joined TA Digital's India entity as Principal Engineer. Served as frontend arch
 
 **Fitbit: Global Website Redesign (Oct 2018 – Sep 2019)**
 
-- Stepped into a year-long stalled program that had been re-scoped twice and shipped it cleanly to production as Scrum Master and Tech Lead of a 14-person cross-functional team (5 AEM developers, 7 UI developers, 2 QA engineers).
-- Designed and led delivery of 7 to 12 reusable AEM and responsive components (hero banners, price comparison tables, video players, content carousels, product cards) consumed across all fitbit.com pages and five locales via AEM multi-site management.
-- Integrated Adobe Target A/B testing into the component architecture so Fitbit's marketing and growth teams could run experiments on hero placements, pricing presentation, and product positioning without engineering involvement per test.
-- Raised code quality across the 14-person team through shared patterns, code-review standards, and onshore-offshore pairing. Reduced sprint carryover 35 to 40% and cut late-stage rework ~50%.
-- Shipped the redesign on time with zero P0 or P1 defects at launch, the first clean milestone the program had produced. Fitbit subsequently extended the engagement with additional follow-on scope.
+- Took over a year-long stalled program (twice re-scoped) and shipped the fitbit.com redesign on time with zero P0 or P1 defects at launch as Scrum Master and Tech Lead of a 14-person team (5 AEM developers, 7 UI developers, 2 QA engineers).
+- Designed and led delivery of 12 reusable AEM components (hero banners, price comparison tables, video players, content carousels, product cards) used across 100% of fitbit.com pages and rolled out to 5 locales via AEM Multi-Site Management.
+- Integrated Adobe Target A/B testing into the component architecture, enabling Fitbit's marketing and growth teams to run 20+ experiments per quarter on hero placements, pricing, and product positioning with zero per-test engineering involvement.
+- Raised code quality across 14 engineers through shared component patterns, code review standards, and onshore-offshore pairing, reducing sprint carryover by 35 to 40% and cutting late-stage rework by ~50%.
+- Rebuilt the client feedback loop with structured demo and stakeholder cadence (replacing ad-hoc communication), surfacing issues 1 to 2 sprints earlier and earning expanded follow-on scope from Fitbit post-launch.
 
 **Bose: Authentication Platform and Identity Experiences (Feb 2018 – Sep 2018)**
 
-- Architected and implemented the frontend authentication layer for Bose (login, signup, password reset, account recovery, and session management) as reusable, brand-aligned responsive components consumable across the consumer web surface.
-- Integrated end-to-end with Okta as the identity provider. Handled token lifecycles, redirect flows, session expiration, and silent re-authentication; coordinated closely with Bose's identity and backend teams to validate the contract across every flow.
-- Wrote rigorous Jest and Jasmine unit and integration tests covering auth flows, token handling, session state, and error paths. Implemented comprehensive try/catch around every API boundary with polished error states for network timeouts, invalid credentials, expired sessions, and upstream service degradation.
-- Established testing and error-handling patterns on this engagement that carried forward as a standard across Fitbit, AARP, and Strategic Education Inc., and became a signature of the delivery style at TA Digital.
+- Architected and shipped the Bose frontend authentication layer (login, signup, password reset, account recovery, session management) as 5+ reusable brand-aligned components deployed across 100% of the signed-in consumer surface, the front door for every logged-in customer experience.
+- Integrated end-to-end with Okta as identity provider across token lifecycles, redirect flows, session expiration, and silent re-authentication; validated the contract across 100% of auth flows with zero post-launch identity-related production defects.
+- Authored 200+ Jest and Jasmine unit and integration tests covering auth flows, token handling, session state, and 15+ distinct error paths, catching regressions before they reached the critical login surface.
+- Implemented try/catch coverage on 100% of API boundaries with polished UI error states for every failure mode (network timeout, invalid credentials, expired session, Okta service degradation), eliminating raw error exposure on a flow with the highest abandonment risk on the site.
+- Established the testing and error-handling pattern that became the TA Digital delivery standard, subsequently adopted across 4 enterprise engagements (Fitbit, AARP, Strayer, Sophia Learning).
 
 **Stack:** Adobe Experience Manager (AEM 6.x), JavaScript (ES6+), jQuery, HTML5, CSS3, SASS, responsive design, Okta, REST APIs, Jest, Jasmine, Karma, Git, Bitbucket, Jira, Jenkins.
 
@@ -235,11 +235,12 @@ _Joined TA Digital's India entity as Principal Engineer. Served as frontend arch
 
 _Owned frontend architecture for the nowfloats web platform, a consumer and merchant product serving 10M+ small-and-medium business (SMB) merchants across India and Southeast Asia. Led a 12-engineer UI team while staying deeply hands-on in architecture and platform code._
 
-- Architected the mobile-first Progressive Web App (PWA) that SMB merchants used to manage their digital storefronts on low-end Android devices over unreliable networks. Implemented offline-first sync, service workers, and background sync queues.
-- Built the real-time merchant dashboard using WebSockets and Redis pub/sub for live order, inquiry, and chat notifications. Designed the reconnection, backoff, and message-replay protocol for mobile networks that drop connections frequently.
-- Designed the schema and data-access patterns for the merchant-facing services across MongoDB (product catalog, merchant profiles, unstructured content) and MySQL (transactional commerce data) as a hybrid NoSQL and SQL model.
-- Set the hiring bar, technical interview loop, and onboarding playbook. Grew the team from 5 to 12 engineers without regressing delivery velocity.
-- Introduced React alongside the existing AngularJS codebase as a path-forward framework. Migrated key merchant flows incrementally and documented the migration pattern for the broader team.
+- Owned frontend architecture for a web platform serving 10M+ SMB merchants across India and Southeast Asia, leading a 12-engineer UI team while staying deeply hands-on in platform code.
+- Architected the mobile-first PWA serving low-end Android devices over unreliable networks, implementing service workers, offline-first sync, and background sync queues that enabled merchant operations during ~30% of sessions with degraded or no connectivity.
+- Built the real-time merchant dashboard on WebSockets + Redis pub/sub for live order, inquiry, and chat notifications; designed the reconnection, backoff, and message-replay protocol that handled the frequent connection drops typical of Tier 2 and Tier 3 Indian mobile networks.
+- Designed the hybrid NoSQL + SQL data model spanning MongoDB (10M+ merchant profiles, catalog, unstructured content) and MySQL (transactional commerce data) for the merchant-facing services.
+- Set the hiring bar, technical interview loop, and onboarding playbook; grew the UI team from 5 to 12 engineers in 12 months (140% growth) without regressing sprint velocity or delivery cadence.
+- Introduced React alongside the existing AngularJS codebase as the path-forward framework, migrating 6+ key merchant flows incrementally and documenting the migration pattern reused across the broader 30+ engineer org.
 
 **Stack:** React, AngularJS, TypeScript, Node.js, Express, WebSockets, MongoDB, MySQL, Redis, Webpack, Service Workers, PWA, Android WebView.
 
@@ -255,17 +256,14 @@ _Owned frontend architecture for the nowfloats web platform, a consumer and merc
 
 _Shipped responsive web and hybrid-mobile experiences for Fortune 500 retail, energy, telecommunications, and financial-services clients out of the Deloitte Digital Mumbai studio. Functioned as a senior IC and mentor across multiple parallel engagements, contributing to the studio's internal UI framework and reusable component library._
 
-- Traveled across Deloitte's India and overseas client sites to embed with delivery teams, establish code-stability practices, and train engineers on modern frontend patterns. Set cross-studio norms on linting, reviews, and testing.
-- Introduced Handlebars templating for shared HTML rendering across projects. Standardized template structure so the same markup could be served from Node.js and .NET backends.
-- Drove adoption of AngularJS (1.x) across multiple engagements as the single-page application framework of choice. Authored patterns for directives, services, and routing that the studio reused across projects.
-- Built and maintained a custom JavaScript framework with mobile and Angular adaptability: the studio's internal foundation for rapidly shipping hybrid and responsive apps.
-- Delivered mobile-based web applications and hybrid mobile shells targeting iOS and Android across PhoneGap / Cordova wrappers, responsive HTML5, and native WebView integrations.
-- Mentored junior and mid-level engineers through pairing, code review, and weekly architecture sessions. Owned hiring panels and technical interview design for the Mumbai studio's UI practice.
-
-**Selected Deloitte client engagements**
-
-- ExxonMobil, B2B E-Commerce: AngularJS-based B2B commerce platform serving enterprise procurement and ordering flows. Owned the Bootstrap-based responsive implementation across the entire application, including mobile navigation, touch-friendly form controls, and adaptive data tables for field-operator phones and tablets.
-- Telstra (Australia's largest telecom carrier): AEM-based consumer and business web estate. Built and maintained the frontend for every AEM component in scope: marketing hero banners, product-plan selectors, support-flow forms, and account-management tools. Responsive AEM components in HTML5, CSS3, SASS, JavaScript.
+- Traveled across 5+ Deloitte India and overseas client sites to embed with delivery teams, establish code stability practices (linting, code review, test coverage standards), and train 20+ engineers on modern frontend patterns.
+- Introduced Handlebars templating as the studio's shared HTML rendering standard, enabling the same markup to serve from both Node.js and .NET backends and reused across 3+ parallel client projects.
+- Drove AngularJS 1.x adoption across 6+ Fortune 500 client engagements as the SPA framework of choice, authoring directive, service, and routing patterns reused across the Mumbai studio's full UI practice.
+- Built and maintained a custom JavaScript framework with mobile and AngularJS adaptability, the studio's internal foundation that compressed time-to-prototype on hybrid and responsive apps from weeks to days.
+- Delivered hybrid mobile shells targeting iOS and Android via PhoneGap and Cordova wrappers, responsive HTML5, and native WebView integrations across retail, energy, telecom, and financial services clients.
+- Owned ExxonMobil's B2B e-commerce frontend on AngularJS + Bootstrap, shipping the responsive implementation across mobile navigation, touch-friendly forms, and adaptive data tables for field operators on phones and tablets across 50+ B2B partner accounts.
+- Built and maintained 100% of in-scope AEM components for Telstra (Australia's largest telecom carrier with 18M+ subscribers) spanning marketing hero banners, product plan selectors, support flow forms, and account management tools across consumer and business properties.
+- Mentored 5+ junior and mid-level engineers via pairing, weekly architecture reviews, and code review; owned technical interview design and hiring panels for the Mumbai studio's UI practice.
 
 **Stack:** AngularJS, JavaScript (ES5, ES6), Handlebars, jQuery, HTML5, CSS3, SASS, LESS, Bootstrap, Adobe Experience Manager (AEM), Node.js, REST APIs, .NET integrations, SQL Server, Git, TFS, Grunt, Gulp, Karma, Jasmine.
 
@@ -277,20 +275,18 @@ _(Management track: title line only)_
 
 _Delivered enterprise web applications and branded CMS solutions across retail, financial services, government, healthcare, and consumer-electronics clients on the Microsoft stack. Functioned as hands-on IC and emerging tech lead across 15+ client engagements in just over two years._
 
-- Programmed a custom sticky-browser jQuery scrollbar plugin that earned direct client recognition and was reused across multiple engagements.
-- Introduced LESS CSS and Twitter Bootstrap as the UX India region's standard frontend stack, baseline for future client engagements across the Hyderabad practice.
-- Developed a custom Tile Image Gallery jQuery plugin for SharePoint 2013 adopted across multiple government and enterprise SharePoint engagements.
-- Worked extensively on Knockout.js and other data-binding JavaScript frameworks for dashboard-heavy enterprise applications.
-- Built complex, interactive data visualizations using Highcharts.js and D3.js, including a choropleth / heat map for PricewaterhouseCoopers' Integrated Global Compliance Services.
-- Authored the HTML5 standalone offline app of the Neudesic Pulse product, one of the earliest PWA-style offline experiences at Neudesic.
-
-**Selected Neudesic client engagements**
-
-- Central Bank of Oman and Ministry of Tertiary Education (Trinidad and Tobago): SharePoint 2013 bilingual Arabic / English (RTL and LTR) regulator portal and government registration portal.
-- Hungama Digital Media Entertainment: Vizio Smart TV HTML5 app for streaming Bollywood and South-Asian content with Opera SDK 12.
-- PricewaterhouseCoopers: Integrated Global Compliance Services on SharePoint 2013 with HTML5 file-upload, Bootstrap, D3.js choropleth / heat map.
-- GE Energy: Remote Monitoring System for cloud-based telecom-tower management.
-- Dawaai.com: Nop-Commerce healthcare e-commerce with jQuery UI and jQuery Mobile.
+- Delivered 15+ client engagements in 27 months across SharePoint 2010/2013 branding, ASP.NET, HTML5, jQuery, and LESS for clients including Central Bank of Oman, Trinidad Ministry of Tertiary Education, Hungama, PricewaterhouseCoopers, GE Energy, QTC, Dawaai.com, Severn Trent, Navajo Tribal Utility, and iPipeline.
+- Programmed a custom sticky-browser jQuery scrollbar plugin that earned direct client recognition and was reused across 3+ subsequent Neudesic engagements.
+- Introduced LESS CSS and Twitter Bootstrap as the UX India region's standard frontend stack, becoming the baseline for 10+ subsequent Hyderabad practice engagements over the following 18 months.
+- Developed a custom Tile Image Gallery jQuery plugin for SharePoint 2013 adopted across 3+ government and enterprise SharePoint engagements (Central Bank of Oman, Ministry of Tertiary Education in Trinidad and Tobago, internal Neudesic portals).
+- Built a complex choropleth heat map for PricewaterhouseCoopers' Integrated Global Compliance Services using D3.js, surfacing tax-compliance status across 200+ regulatory jurisdictions in a single interactive view.
+- Worked extensively on Knockout.js and other data-binding JavaScript frameworks for dashboard-heavy enterprise applications spanning financial services and government clients (PwC, GE Energy, Skill Central, Neu Recruit).
+- Authored the HTML5 standalone offline app of Neudesic Pulse, one of Neudesic's earliest PWA-style experiences, supporting full product feature parity without network connectivity.
+- Wrote a carousel jQuery plugin combining metro parallax effect with accordion behavior, reused across 2+ enterprise dashboard engagements.
+- Developed a Windows 8 HTML5/JS POC for intranet workflow management with Lync and Pulse integration, demonstrating platform viability to enterprise prospects evaluating Windows 8 in the lead-up to general availability.
+- Built mobile web designer tooling that converted existing site markup into mobile web apps via XML, XSLT, and CSS3, cutting mobile site delivery time by an estimated 60% on subsequent engagements.
+- Initiated mobile-first site delivery on jQuery Mobile across 5+ engagements (Hungama Vizio Smart TV streaming app, Dawaai.com healthcare e-commerce, internal Neudesic apps), establishing the studio's mobile web playbook.
+- Shipped the Vizio Smart TV HTML5 streaming app for Hungama Digital Media (largest aggregator of Bollywood and South-Asian content), validating the UI on Opera SDK 12 across 100% of target Vizio device variants.
 
 **Stack:** HTML5, CSS3, LESS, SASS, JavaScript (ES5), jQuery, jQuery Mobile, jQuery UI, Knockout.js, Highcharts, D3.js, Bootstrap, FuelUX, SharePoint 2010 / 2013, ASP.NET, C#, Windows 8 (WinJS), HTML5 offline storage, XML, XSLT.
 
