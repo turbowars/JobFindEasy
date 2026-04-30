@@ -1,16 +1,18 @@
-"""Cover letter generation orchestrator (EM track).
+"""Cover letter generation orchestrator (EM + IC tracks).
 
 Pipeline:
-  1. Frame check — count people-leadership vs IC signals in the JD.
+  1. Detect track from JD title (em vs ic).
+  2. EM-only: frame check — count people-leadership vs IC signals.
         people >= 2*ic     -> frame = "standard"
         ic >= 2*people     -> raise (skill says "flag back to user")
         otherwise          -> frame = "hybrid"  (player-coach opening)
-  2. Build user message from JD + locked profile + frame hint.
-  3. ONE Sonnet call -> JSON.
-  4. Validate signal keys against the locked 9-signal table.
-  5. Build CoverLetter dataclass merging LLM output with locked text.
-  6. Render .docx, mirror to public.
-  7. Return (path, report) where report describes frame + bullet picks +
+     IC: frame is always "ic" (skip frame check — IC titles are IC-framed).
+  3. Build user message from JD + locked profile + frame hint.
+  4. ONE Sonnet call -> JSON.
+  5. Validate signal keys against the track-specific 9-signal table.
+  6. Build CoverLetter dataclass merging LLM output with locked text.
+  7. Render .docx, mirror to public.
+  8. Return (path, report) where report describes frame + bullet picks +
      anything the user might want to swap.
 
 No retry loop. No scoring. The skill's discipline checklist is enforced
@@ -90,12 +92,24 @@ def frame_check(jd_text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _bullets_from_llm(llm_bullets: list) -> list[BulletPick]:
+def _bullet_table_for(track: str) -> dict:
+    """Single entry-point for "which signal table does this track use".
+    Keeps the EM/IC choice in one place so the validator and any future
+    introspection share the same lookup."""
+    return (
+        profile.COVER_LETTER_BULLETS_BY_SIGNAL_IC
+        if track == "ic"
+        else profile.COVER_LETTER_BULLETS_BY_SIGNAL
+    )
+
+
+def _bullets_from_llm(llm_bullets: list, track: str = "em") -> list[BulletPick]:
     """Validate that the LLM picked 3 different signal keys from the locked
-    table. Maps each key to the canonical bullet text. Defensive defaults
-    fill in if the LLM drifts (returns fewer than 3, returns unknown keys),
-    so the renderer always has 3 bullets to work with."""
-    table = profile.COVER_LETTER_BULLETS_BY_SIGNAL
+    table for this track. Maps each key to the canonical bullet text.
+    Defensive defaults fill in if the LLM drifts (returns fewer than 3,
+    returns unknown keys), so the renderer always has 3 bullets to work
+    with."""
+    table = _bullet_table_for(track)
     picked: list[BulletPick] = []
     seen: set[str] = set()
     for entry in llm_bullets or []:
@@ -122,12 +136,18 @@ def _bullets_from_llm(llm_bullets: list) -> list[BulletPick]:
     return picked[:3]
 
 
-def _letter_from_llm(payload: dict, jd_title: str, jd_company: str, frame: str) -> CoverLetter:
+def _letter_from_llm(
+    payload: dict,
+    jd_title: str,
+    jd_company: str,
+    frame: str,
+    track: str = "em",
+) -> CoverLetter:
     return CoverLetter(
         hiring_manager_name=scrub_dashes((payload.get("hiring_manager_name") or "").strip()),
         opening_hook=scrub_dashes((payload.get("opening_hook") or "").strip()),
         company_hook=scrub_dashes((payload.get("company_hook") or "").strip()),
-        bullets=_bullets_from_llm(payload.get("bullets") or []),
+        bullets=_bullets_from_llm(payload.get("bullets") or [], track=track),
         company_fit_line=scrub_dashes((payload.get("company_fit_line") or "").strip()),
         jd_title=jd_title,
         jd_company=jd_company,
@@ -148,35 +168,41 @@ def generate_cover_letter(
     source: str = "the company website",
     referrer_name: str = "",
 ) -> tuple[Path, dict]:
-    """Generate an EM-template cover letter.
+    """Generate a cover letter — dispatches on track.
 
-    Raises ValueError when:
-      - JD title routes to IC track (no IC template defined yet), or
-      - the JD body's signal balance is IC-dominated (skill says flag back).
+    EM track:
+      - Runs frame_check; raises ValueError on IC-dominated JD bodies.
+      - Frame is "standard" (people-leadership-dominant) or "hybrid"
+        (balanced player-coach).
+
+    IC track:
+      - Frame is always "ic" — no frame check (IC titles are always
+        IC-framed; signal balance in the JD doesn't change that).
 
     Returns (output_path, report). The report includes:
-      - frame: "standard" | "hybrid"
+      - track: "em" | "ic"
+      - frame: "standard" | "hybrid" | "ic"
       - bullet_picks: [{signal, bullet}, ...]  (so caller can show selection
         rationale and swap quickly)
       - source, referrer_name (echo of inputs)
     """
     track = detect_track(jd_title)
-    if track != "em":
-        raise ValueError(
-            f"Cover letter generation supports EM-track titles only "
-            f"(detected '{track}' for {jd_title!r}). Provide an IC-track "
-            f"cover-letter template to enable IC support."
-        )
-
-    frame = frame_check(jd_text)
-    if frame == "ic_dominated":
-        raise ValueError(
-            "JD reads as IC-dominated (technical-depth signals outweigh "
-            "people-leadership signals 2:1 or more). Per the skill rules, "
-            "flag this back to the user before drafting an EM letter — the "
-            "EM frame would undersell the technical signal. Consider an "
-            "IC-track template instead."
-        )
+    if track == "em":
+        frame = frame_check(jd_text)
+        if frame == "ic_dominated":
+            raise ValueError(
+                "JD reads as IC-dominated (technical-depth signals outweigh "
+                "people-leadership signals 2:1 or more). Per the skill rules, "
+                "flag this back to the user before drafting an EM letter — the "
+                "EM frame would undersell the technical signal. Consider an "
+                "IC-track template instead."
+            )
+        system = prompts.SYSTEM_PROMPT
+    else:
+        # IC track: no frame check (the title is the gate). The renderer
+        # uses frame == "ic" to pick the IC background paragraph.
+        frame = "ic"
+        system = prompts.SYSTEM_PROMPT_IC
 
     model = model or os.environ.get("GENERATION_MODEL", "anthropic/claude-sonnet-4.5")
 
@@ -187,16 +213,17 @@ def generate_cover_letter(
         source=source,
         referrer_name=referrer_name,
         frame=frame,
+        track=track,
     )
     raw = chat(
-        system=prompts.SYSTEM_PROMPT,
+        system=system,
         user=user,
         model=model,
         max_tokens=1500,
         cache_system=False,  # CL prompt is small, below cache threshold
     )
     payload = prompts.parse_response(raw)
-    letter = _letter_from_llm(payload, jd_title, jd_company, frame)
+    letter = _letter_from_llm(payload, jd_title, jd_company, frame, track=track)
 
     output_path = expected_cover_letter_path(jd_title, jd_company)
     build_docx(letter, output_path)
@@ -206,6 +233,7 @@ def generate_cover_letter(
         log.info("cover letter mirrored to %s", public_path)
 
     report = {
+        "track": track,
         "frame": frame,
         "bullet_picks": [{"signal": b.signal, "bullet": b.bullet} for b in letter.bullets],
         "company_hook_used": letter.has_company_hook,
@@ -215,7 +243,8 @@ def generate_cover_letter(
         "plain_text": _render_plain_text(letter),
     }
     log.info(
-        "[cover_letter] generated: frame=%s signals=%s",
+        "[cover_letter] generated: track=%s frame=%s signals=%s",
+        track,
         frame,
         ",".join(b.signal for b in letter.bullets),
     )
@@ -229,24 +258,15 @@ def autogen_cover_letter_if_missing(
     location: str = "",
 ) -> Path | None:
     """Generate a cover letter only when one for this job doesn't exist on
-    disk AND the title routes to EM track. IC titles are skipped silently
-    (no IC template defined yet) — callers in the auto-gen path don't need
-    to special-case the track. Errors are logged and swallowed so a single
+    disk. Both EM and IC tracks are supported; generate_cover_letter
+    dispatches internally. Errors are logged and swallowed so a single
     job's failure can't kill the score loop.
 
-    Returns the path on success (or pre-existing), None on skip / failure.
+    Returns the path on success (or pre-existing), None on failure.
     """
     existing = expected_cover_letter_path(jd_title, jd_company)
     if existing.exists():
         return existing
-    track = detect_track(jd_title)
-    if track != "em":
-        log.info(
-            "autogen cover letter skipped (IC track): %s @ %s",
-            jd_title,
-            jd_company,
-        )
-        return None
     try:
         path, _ = generate_cover_letter(jd_title, jd_company, jd_text)
         log.info("auto-generated cover letter: %s", path.name)
@@ -263,11 +283,7 @@ def autogen_cover_letter_if_missing(
 
 def _render_plain_text(letter: CoverLetter) -> str:
     """Plain-text equivalent for previews and tests."""
-    background = (
-        profile.COVER_LETTER_BACKGROUND_HYBRID
-        if letter.frame == "hybrid"
-        else profile.COVER_LETTER_BACKGROUND_STANDARD
-    )
+    background = profile.cover_letter_background_for_frame(letter.frame)
     name = letter.hiring_manager_name.strip()
     greeting = f"Dear {name}," if name else "Dear Hiring Manager,"
     parts = [

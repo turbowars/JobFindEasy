@@ -606,9 +606,10 @@ def action_bulk_generate():
 @app.post("/actions/bulk-generate-covers")
 def action_bulk_generate_covers():
     """Parallel cover-letter generation for every strong-fit job that
-    doesn't already have one. IC-track titles are skipped silently inside
-    the helper. Goes through the same executor as resumes (3 workers),
-    so cover-letter and resume jobs interleave naturally."""
+    doesn't already have one. EM and IC tracks are both supported; the
+    pipeline dispatches internally. Goes through the same executor as
+    resumes (3 workers), so cover-letter and resume jobs interleave
+    naturally."""
     n = state.submit_all_missing_strong_fit_cover_letters()
     return JSONResponse({"queued": n}, headers=_hx_trigger("jia-generations-changed"))
 

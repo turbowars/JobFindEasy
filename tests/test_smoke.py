@@ -564,23 +564,102 @@ def test_prompt_allows_domain_qualifier_flexing():
 
 
 # ---------------------------------------------------------------------------
-# 16. Cover letter refuses IC-track titles (no IC template defined yet)
+# 16. Cover letter end-to-end render — IC track (locked IC background +
+#     IC-framed bullets, no people-leadership phrasings)
 # ---------------------------------------------------------------------------
-def test_cover_letter_refuses_ic_track():
-    """The EM template ships first; the IC template is intentionally not
-    yet built. Pipeline must refuse IC-track titles loudly so the dashboard
-    can show an error rather than silently emitting an EM-framed letter
-    for a Staff Frontend Engineer JD."""
+def test_cover_letter_ic_track_renders_ic_template(monkeypatch, tmp_path):
+    """IC titles (Staff Frontend Engineer, Tech Lead, etc.) used to raise
+    ValueError. The IC pipeline must now:
+      - skip frame_check (IC titles are always IC-framed)
+      - render the locked IC background paragraph verbatim
+      - render IC-framed bullets ("I designed and shipped" not "my team")
+      - report track="ic" + frame="ic" so the caller can introspect
+    """
+    import json as _json
+
     import pytest
 
-    from src.cover_letter import generate_cover_letter
+    from src.cover_letter import pipeline as cl_pipeline
+    from src.cover_letter.pipeline import generate_cover_letter
+    from src.resume import profile as resume_profile
 
-    with pytest.raises(ValueError, match="EM-track"):
-        generate_cover_letter(
-            jd_title="Staff Frontend Engineer",
-            jd_company="Vercel",
-            jd_text="...",
+    fake_payload = {
+        "hiring_manager_name": "",
+        "opening_hook": "I'm applying for the Staff Frontend Engineer role you posted on Greenhouse.",
+        "company_hook": "",
+        "bullets": [
+            {"signal": "platform_devex"},
+            {"signal": "end_to_end"},
+            {"signal": "performance"},
+        ],
+        "company_fit_line": "",
+    }
+    monkeypatch.setattr(cl_pipeline, "chat", lambda *a, **k: _json.dumps(fake_payload))
+    monkeypatch.setattr(cl_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cl_pipeline, "mirror_to_public", lambda p: None)
+
+    # JD body deliberately IC-heavy — would have hit the ic_dominated guard
+    # on EM track. IC track must NOT run frame_check.
+    ic_jd = (
+        "Staff Frontend Engineer — hands-on individual contributor. Deep "
+        "technical depth on system design, architecture, code review, "
+        "on-call rotations, RFCs, and load-bearing production code."
+    )
+
+    path, report = generate_cover_letter(
+        jd_title="Staff Frontend Engineer",
+        jd_company="Vercel",
+        jd_text=ic_jd,
+    )
+
+    # Did NOT raise the IC-dominated ValueError that fires on EM track.
+    assert path.exists() and path.suffix == ".docx"
+    assert report["track"] == "ic"
+    assert report["frame"] == "ic"
+
+    text = report["plain_text"]
+    # The locked IC background paragraph must render VERBATIM.
+    assert resume_profile.COVER_LETTER_BACKGROUND_IC in text
+    # And the EM backgrounds must NOT appear.
+    assert resume_profile.COVER_LETTER_BACKGROUND_STANDARD not in text
+    assert resume_profile.COVER_LETTER_BACKGROUND_HYBRID not in text
+
+    # Bullets must come from the IC table, not the EM table — verify by
+    # asserting the IC bullet text shows up for every signal the LLM picked.
+    ic_table = resume_profile.COVER_LETTER_BULLETS_BY_SIGNAL_IC
+    em_table = resume_profile.COVER_LETTER_BULLETS_BY_SIGNAL
+    for key in ("platform_devex", "end_to_end", "performance"):
+        assert ic_table[key]["bullet"] in text, f"IC bullet for {key} must render"
+        # IC bullets are written differently from EM bullets — confirm we
+        # didn't accidentally render the EM variant.
+        if ic_table[key]["bullet"] != em_table[key]["bullet"]:
+            assert em_table[key]["bullet"] not in text
+
+    # IC framing rule: no people-leadership phrasings should appear in the
+    # IC background. (The bullets were authored to honor this too.)
+    background = resume_profile.COVER_LETTER_BACKGROUND_IC
+    for forbidden in ("my team", "engineers I led", "team I managed"):
+        assert forbidden.lower() not in background.lower(), (
+            f"IC background must not contain people-leadership phrasing: {forbidden!r}"
         )
+
+    # Sanity: greeting + signoff + closing all still present.
+    assert text.lstrip().startswith("Dear Hiring Manager,")
+    assert resume_profile.COVER_LETTER_SIGNOFF in text
+    assert "Dheeraj Sampath" in text
+
+    # The old EM-only refusal must NOT raise anymore.
+    # (Re-asserting via a second call with a different IC title for clarity.)
+    monkeypatch.setattr(cl_pipeline, "chat", lambda *a, **k: _json.dumps(fake_payload))
+    try:
+        generate_cover_letter(
+            jd_title="Senior Frontend Engineer",
+            jd_company="Linear",
+            jd_text=ic_jd,
+        )
+    except ValueError as e:
+        if "EM-track" in str(e):
+            pytest.fail("IC track must no longer raise the EM-only ValueError")
 
 
 # ---------------------------------------------------------------------------
@@ -1049,23 +1128,40 @@ def test_submit_generation_records_job_hash(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 26. Cover letter autogen skips IC-track titles silently (no IC template yet)
+# 26. Cover letter autogen now generates for IC-track titles too
 # ---------------------------------------------------------------------------
-def test_autogen_cover_letter_skips_ic_track(monkeypatch):
-    """Wiring autogen_cover_letter_if_missing into the score loop must NOT
-    crash on Staff Frontend Engineer / Tech Lead / etc. titles. The cover
-    letter pipeline only handles EM track today; the autogen helper must
-    skip those jobs silently and return None so the loop keeps running."""
+def test_autogen_cover_letter_generates_for_ic_track(monkeypatch, tmp_path):
+    """Used to early-return None for IC titles. With the IC template wired
+    up, the autogen helper must run the IC pipeline and produce a .docx
+    so Staff Frontend Engineer / Tech Lead postings get a cover letter
+    paired with their resume in the auto-flow."""
+    import json as _json
+
+    from src.cover_letter import pipeline as cl_pipeline
     from src.cover_letter.pipeline import autogen_cover_letter_if_missing
 
-    # No need to stub generate_cover_letter — the helper short-circuits
-    # before ever calling it because detect_track returns "ic".
+    fake_payload = {
+        "hiring_manager_name": "",
+        "opening_hook": "I'm applying for the Staff Frontend Engineer role.",
+        "company_hook": "",
+        "bullets": [
+            {"signal": "platform_devex"},
+            {"signal": "end_to_end"},
+            {"signal": "performance"},
+        ],
+        "company_fit_line": "",
+    }
+    monkeypatch.setattr(cl_pipeline, "chat", lambda *a, **k: _json.dumps(fake_payload))
+    monkeypatch.setattr(cl_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cl_pipeline, "mirror_to_public", lambda p: None)
+
     result = autogen_cover_letter_if_missing(
         jd_title="Staff Frontend Engineer",
         jd_company="Vercel",
-        jd_text="...",
+        jd_text="hands-on staff IC role, deep system design, on-call",
     )
-    assert result is None, "IC-track jobs must not produce a cover letter"
+    assert result is not None, "IC-track jobs must now produce a cover letter"
+    assert result.exists() and result.suffix == ".docx"
 
 
 # ---------------------------------------------------------------------------

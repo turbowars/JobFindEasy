@@ -83,11 +83,7 @@ def build_docx(letter: CoverLetter, output_path: Path) -> None:
         hook_p.paragraph_format.space_after = Pt(8)
 
     # ----- Background paragraph (locked, frame-dependent) -----
-    background = (
-        profile.COVER_LETTER_BACKGROUND_HYBRID
-        if (letter.frame or "standard").lower() == "hybrid"
-        else profile.COVER_LETTER_BACKGROUND_STANDARD
-    )
+    background = profile.cover_letter_background_for_frame(letter.frame)
     bg_p = doc.add_paragraph()
     _set_arial(bg_p.add_run(background), size=11)
     bg_p.paragraph_format.space_after = Pt(8)

@@ -79,6 +79,22 @@ COVER_LETTER_BACKGROUND_HYBRID = (
     "Strategic Education."
 )
 
+# IC background: hands-on senior IC roles (Staff / Principal / Tech Lead /
+# Senior Frontend / Full-Stack / Architect). Framed around what Dheeraj
+# personally designed, built, and shipped — no people-leadership claims.
+# Same companies as the EM tracks (single source of truth for work history)
+# but flexed to highlight the IC-grade depth in design systems, micro-
+# frontends, and developer experience.
+COVER_LETTER_BACKGROUND_IC = (
+    "I'm a hands-on senior engineer with 15+ years across frontend and "
+    "full-stack, deep in design systems, micro-frontend architecture, and "
+    "developer experience. At Equifax I designed and shipped the React and "
+    "TypeScript micro-frontend platform powering the consumer product suite; "
+    "before that I owned end-to-end delivery of the embeddable SDK at "
+    "Midigator (acquired by Equifax) and built front-end systems for Bose, "
+    "Fitbit, AARP, and Strategic Education during my time at TA Digital."
+)
+
 COVER_LETTER_BULLETS_LEAD = (
     "A few things from my track record that line up with what you're hiring for:"
 )
@@ -262,6 +278,120 @@ COVER_LETTER_BULLETS_BY_SIGNAL = {
         ),
     },
 }
+
+# IC-track variants of the same 9 signals. Same keys (the prompt and
+# validator share one signal vocabulary) but framed as IC contributions:
+# "I designed", "I shipped", "I own" — never "my team" or "engineers I led".
+# Numbers and named tools are preserved verbatim from the EM bullets — it's
+# the same body of work, told from the IC seat.
+COVER_LETTER_BULLETS_BY_SIGNAL_IC = {
+    "turnaround": {
+        "phrases": COVER_LETTER_BULLETS_BY_SIGNAL["turnaround"]["phrases"],
+        "bullet": (
+            "Took over a year-long stalled redesign at Fitbit as Tech Lead. "
+            "Rewrote the architecture, established the code review and QA "
+            "standards, rebuilt the client demo loop, and shipped to "
+            "production with zero P0 or P1 defects. Fitbit extended the "
+            "engagement on the back of that delivery."
+        ),
+    },
+    "team_scaling": {
+        "phrases": COVER_LETTER_BULLETS_BY_SIGNAL["team_scaling"]["phrases"],
+        "bullet": (
+            "As nowfloats grew from 5 to 12 engineers, I authored the "
+            "technical interview questions, ran every senior interview loop, "
+            "and built the onboarding playbook new hires shipped against in "
+            "their first week."
+        ),
+    },
+    "platform_devex": {
+        "phrases": COVER_LETTER_BULLETS_BY_SIGNAL["platform_devex"]["phrases"],
+        "bullet": (
+            "I designed and shipped the React and TypeScript micro-frontend "
+            "platform powering the consumer product suite at Equifax. Three "
+            "product teams ship against the shared component library and "
+            "contract-tested design tokens I authored; build cycles dropped "
+            "25% and cross-team release blockers were eliminated."
+        ),
+    },
+    "end_to_end": {
+        "phrases": COVER_LETTER_BULLETS_BY_SIGNAL["end_to_end"]["phrases"],
+        "bullet": (
+            "I own my slice end-to-end at Equifax: design partnership, "
+            "Playwright and Vitest gates in CI, OpenTelemetry and Core Web "
+            "Vitals dashboards in production, and on-call. Same pattern at "
+            "Midigator, where I designed the embeddable SDK and supported it "
+            "through partner integration testing and post-launch."
+        ),
+    },
+    "cross_functional": {
+        "phrases": COVER_LETTER_BULLETS_BY_SIGNAL["cross_functional"]["phrases"],
+        "bullet": (
+            "At Strategic Education I was the onshore technical bridge for "
+            "two years across product, design, analytics, and an offshore "
+            "engineering team. I ran architecture reviews, paired on hard "
+            "problems, and drove client-facing demos for the Strayer and "
+            "Sophia shared component system."
+        ),
+    },
+    "quality_testing": {
+        "phrases": COVER_LETTER_BULLETS_BY_SIGNAL["quality_testing"]["phrases"],
+        "bullet": (
+            "I built the front-end authentication layer for Bose integrated "
+            "end-to-end with Okta. The testing patterns I established (unit, "
+            "integration, defensive error handling around every API "
+            "boundary, polished UI error states for every failure mode) "
+            "became the delivery standard across every subsequent "
+            "engagement."
+        ),
+    },
+    "performance": {
+        "phrases": COVER_LETTER_BULLETS_BY_SIGNAL["performance"]["phrases"],
+        "bullet": (
+            "I drove a Lighthouse-based performance program at Strategic "
+            "Education that lifted scores from the 40s into the 90s, with "
+            "image optimization alone improving page load by approximately "
+            "80%. Brought the site comfortably into Core Web Vitals 'Good' "
+            "thresholds."
+        ),
+    },
+    "mentoring": {
+        "phrases": COVER_LETTER_BULLETS_BY_SIGNAL["mentoring"]["phrases"],
+        "bullet": (
+            "I mentor senior and staff-track ICs at Equifax through pairing, "
+            "architectural coaching, and code review; I author the RFCs and "
+            "run the design reviews that shape platform direction across "
+            "three product teams."
+        ),
+    },
+    "ai_llm_em": {
+        "phrases": COVER_LETTER_BULLETS_BY_SIGNAL["ai_llm_em"]["phrases"],
+        "bullet": (
+            "I designed and shipped an LLM-powered code-review assistant "
+            "(Anthropic Claude API plus AST analysis) at Equifax adopted by "
+            "40+ engineers, reducing post-merge defects roughly 30%. I owned "
+            "the rollout end-to-end: scoping, integration, adoption, "
+            "feedback loops."
+        ),
+    },
+}
+
+
+def cover_letter_background_for_frame(frame: str) -> str:
+    """Frame -> locked background paragraph. The renderer (.docx + plain
+    text preview) both call this so the mapping lives once.
+
+      "ic"       -> COVER_LETTER_BACKGROUND_IC       (IC track)
+      "hybrid"   -> COVER_LETTER_BACKGROUND_HYBRID   (player-coach EM)
+      otherwise  -> COVER_LETTER_BACKGROUND_STANDARD (people-leader EM)
+    """
+    f = (frame or "standard").lower()
+    if f == "ic":
+        return COVER_LETTER_BACKGROUND_IC
+    if f == "hybrid":
+        return COVER_LETTER_BACKGROUND_HYBRID
+    return COVER_LETTER_BACKGROUND_STANDARD
+
 
 # Phrase-counting buckets used by the frame check. People-leadership terms
 # vs IC technical-depth terms; the ratio decides standard / hybrid /

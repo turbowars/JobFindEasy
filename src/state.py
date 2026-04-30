@@ -273,8 +273,8 @@ def _autoscrape_loop_factory():
                         if path:
                             out["auto_resumes"] += 1
                             # Pair with a cover letter for top fits. Helper
-                            # skips IC-track jobs and silently swallows
-                            # errors so the loop keeps going.
+                            # dispatches EM/IC internally and silently
+                            # swallows errors so the loop keeps going.
                             autogen_cover_letter_if_missing(
                                 j["title"],
                                 j["company"],
@@ -386,12 +386,12 @@ def submit_all_missing_strong_fits(min_score: int = 80) -> int:
 
 def submit_all_missing_strong_fit_cover_letters(min_score: int = 80) -> int:
     """Queue cover letter generation for every strong-fit job that doesn't
-    already have one on disk. Skips jobs whose JD title routes to IC track
-    (cover letter pipeline only supports EM today). Returns count submitted.
+    already have one on disk. Both EM and IC tracks are generated;
+    generate_cover_letter dispatches internally on detect_track.
+    Returns count submitted.
     """
     from . import db
     from .cover_letter import expected_cover_letter_path
-    from .resume.pipeline import detect_track
 
     df = db.to_dataframe()
     if df.empty:
@@ -404,10 +404,6 @@ def submit_all_missing_strong_fit_cover_letters(min_score: int = 80) -> int:
         title, company = r["title"], r["company"]
         path = expected_cover_letter_path(title, company)
         if path.exists():
-            continue
-        # Skip IC-track titles silently — generate_cover_letter would raise
-        # ValueError for them, which the executor would log but not surface.
-        if detect_track(title) != "em":
             continue
         submit_generation(
             "cover",
