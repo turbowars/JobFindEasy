@@ -1395,3 +1395,218 @@ def test_prefilter_title_bad_rejects_out_of_scope_titles(title):
         return
     passed, _reason, _sp = prefilter(title, description="")
     assert not passed, f"prefilter should drop {title!r}"
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Claude-for-Chrome prompt — pins queue ordering + structural sections.
+#
+# Bug class this prevents: the prompt is the contract between the dashboard
+# and the Claude-for-Chrome session. If the queue order silently changes
+# (e.g., `closed` jobs leak in, `applying` jobs sort before `shortlisted`,
+# tier priority gets reversed), Dheeraj wastes time on stale or wrong-track
+# applications. The prompt rewrite (2026-04-30) baked in: queue scope =
+# shortlisted ∪ new ∪ applying; sort = tier → status → score; batch of 5;
+# sponsorship-denied → mark `no_sponsorship`. These tests pin those.
+# ────────────────────────────────────────────────────────────────────────────
+def test_claude_queue_orders_by_tier_then_status_then_score():
+    from web.app import _build_claude_queue
+
+    df = pd.DataFrame(
+        [
+            # (title, status, tier, score) — names the row's expected position
+            {
+                "title": "lower-tier-shortlisted",
+                "company": "C1",
+                "status": "shortlisted",
+                "tier": "possible",
+                "score_total": 95.0,
+                "scraped_at": "2026-04-29",
+                "hash": "h1",
+                "url": "u",
+                "location": "",
+            },
+            {
+                "title": "strong-applying-low",
+                "company": "C2",
+                "status": "applying",
+                "tier": "strong",
+                "score_total": 70.0,
+                "scraped_at": "2026-04-29",
+                "hash": "h2",
+                "url": "u",
+                "location": "",
+            },
+            {
+                "title": "strong-shortlisted-mid",
+                "company": "C3",
+                "status": "shortlisted",
+                "tier": "strong",
+                "score_total": 80.0,
+                "scraped_at": "2026-04-29",
+                "hash": "h3",
+                "url": "u",
+                "location": "",
+            },
+            {
+                "title": "strong-new-high",
+                "company": "C4",
+                "status": "new",
+                "tier": "strong",
+                "score_total": 92.0,
+                "scraped_at": "2026-04-29",
+                "hash": "h4",
+                "url": "u",
+                "location": "",
+            },
+            {
+                "title": "strong-shortlisted-high",
+                "company": "C5",
+                "status": "shortlisted",
+                "tier": "strong",
+                "score_total": 90.0,
+                "scraped_at": "2026-04-29",
+                "hash": "h5",
+                "url": "u",
+                "location": "",
+            },
+            # Terminal — must NOT appear in the queue
+            {
+                "title": "closed-high",
+                "company": "C6",
+                "status": "closed",
+                "tier": "strong",
+                "score_total": 99.0,
+                "scraped_at": "2026-04-29",
+                "hash": "h6",
+                "url": "u",
+                "location": "",
+            },
+            {
+                "title": "not-interested-high",
+                "company": "C7",
+                "status": "not_interested",
+                "tier": "strong",
+                "score_total": 99.0,
+                "scraped_at": "2026-04-29",
+                "hash": "h7",
+                "url": "u",
+                "location": "",
+            },
+            {
+                "title": "no-sponsorship-high",
+                "company": "C8",
+                "status": "no_sponsorship",
+                "tier": "strong",
+                "score_total": 99.0,
+                "scraped_at": "2026-04-29",
+                "hash": "h8",
+                "url": "u",
+                "location": "",
+            },
+        ]
+    )
+
+    queue = _build_claude_queue(df)
+    titles = [j["title"] for j in queue]
+
+    # Terminal states excluded
+    assert "closed-high" not in titles
+    assert "not-interested-high" not in titles
+    assert "no-sponsorship-high" not in titles
+
+    # Order: tier=strong first, within that status=shortlisted before new
+    # before applying, score desc within bucket; then tier=possible.
+    assert titles == [
+        "strong-shortlisted-high",  # strong + shortlisted, score 90
+        "strong-shortlisted-mid",  # strong + shortlisted, score 80
+        "strong-new-high",  # strong + new, score 92
+        "strong-applying-low",  # strong + applying, score 70
+        "lower-tier-shortlisted",  # possible + shortlisted (last)
+    ], f"unexpected queue order: {titles}"
+
+
+def test_claude_prompt_includes_required_sections_and_personal_facts(monkeypatch):
+    """The prompt is the user-facing contract for Claude-for-Chrome behavior.
+    Pin that we render: every required section header, the personal facts
+    pulled from APPLICATION_DEFAULTS, the batch size, and the no_sponsorship
+    instruction. Don't pin prose — pin landmarks."""
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from web import app as web_app
+
+    df = pd.DataFrame(
+        [
+            {
+                "hash": "abc123",
+                "source": "greenhouse",
+                "company": "Acme",
+                "title": "Engineering Manager, Frontend Platform",
+                "location": "Remote - USA",
+                "url": "https://acme.example/jobs/em-fp",
+                "description": "x",
+                "posted_at": "2026-04-29",
+                "salary_min": None,
+                "salary_max": None,
+                "remote": 1,
+                "sponsorship_status": "unknown",
+                "prefilter_passed": 1,
+                "prefilter_reason": "",
+                "score_total": 92.0,
+                "score_breakdown": "{}",
+                "score_rationale": "",
+                "tier": "strong",
+                "status": "shortlisted",
+                "status_at": None,
+                "closed_reason": None,
+                "applied_at": None,
+                "notes": "",
+                "scraped_at": "2026-04-29T00:00:00",
+            }
+        ]
+    )
+    monkeypatch.setattr(db_module, "to_dataframe", lambda: df)
+
+    client = TestClient(web_app.app)
+    r = client.get("/api/claude-prompt.txt")
+    assert r.status_code == 200
+    body = r.text
+
+    # Section landmarks. The prompt no longer embeds the queue — Claude
+    # reads it directly from the dashboard's Target filter — so there's
+    # no "## Queue" section anymore.
+    for header in (
+        "## About Dheeraj",
+        "## Tab discipline",
+        "## Tailored artifacts per job",
+        "## Workflow",
+        "## End-of-queue summary",
+        "## Hard rules",
+        "## Start now",
+    ):
+        assert header in body, f"missing section: {header}"
+
+    # Batch size baked into the workflow narrative
+    assert "BATCHES OF 5" in body.upper()
+
+    # Personal facts from APPLICATION_DEFAULTS — single source of truth.
+    # Email = proton (the resume-header address), NOT the user's personal
+    # Gmail. Pinned because the user has explicitly corrected this.
+    assert "dheerajsampath@proton.me" in body
+    assert "turbowars@gmail.com" not in body
+    assert "evolvingdx" in body  # LinkedIn
+    assert "github.com/turbowars" in body  # GitHub URL (turbowars = username)
+    assert "dheerajsampath.com" in body  # personal site
+    assert "(248) 873-8929" in body  # phone
+    assert "Austin, TX" in body  # location
+    assert "he/him" in body  # pronouns
+    assert "Indian" in body  # citizenship
+    assert "REQUIRES sponsorship" in body  # sponsorship stance
+
+    # The prompt must instruct Claude to mark sponsorship-denied jobs as
+    # "No Sponsorship" — NOT silently skip them.
+    assert "No Sponsorship" in body
+
+    # Claude is told to use the Target filter, NOT given an embedded queue.
+    assert "Target" in body
+    assert "filtered grid IS the queue" in body

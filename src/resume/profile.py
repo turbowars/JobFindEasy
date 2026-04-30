@@ -32,12 +32,27 @@ YEARS_OF_EXPERIENCE = "15+"
 # pulls from here so these answers stay consistent across applications and
 # are owned alongside the rest of the profile.
 APPLICATION_DEFAULTS = {
-    "email": "turbowars@gmail.com",  # applications inbox (resume header uses dheerajsampath@proton.me)
+    "email": "dheerajsampath@proton.me",  # same address used in the resume header — single point of contact
+    "phone": "(248) 873-8929",
+    "linkedin_url": "https://www.linkedin.com/in/evolvingdx",
+    "github_url": "https://github.com/turbowars/",
+    "website_url": "https://dheerajsampath.com",
+    "current_location": "Austin, TX",
     "comp_expectation": "$220k+",
-    "notice_period": "No notice period - immediately available to join",
+    "notice_period": "No notice period — immediately available to join",
+    "earliest_start_date": "Immediately",
     "open_to": "Remote (US), Hybrid (Bay Area / NYC). Not relocating.",
     "targeting": "Engineering Manager / Staff Frontend / Frontend Platform leadership roles",
-    "work_authorization": "Authorized to work in the US, requires H-1B transfer. Sponsorship REQUIRED.",
+    "pronouns": "he/him",
+    "citizenship": "Indian (citizen of India)",
+    # Sponsorship truth — needs sponsorship now, not just in the future.
+    # If a JD denies sponsorship, the prefilter has already dropped it; if
+    # a JD is silent, Claude applies anyway and asks in the form.
+    "work_authorization": (
+        "Authorized to work in the US on H-1B. REQUIRES sponsorship now "
+        "(transfer of current H-1B) AND in the future (extension / green card)."
+    ),
+    "needs_sponsorship_now": True,
 }
 
 # ---------------------------------------------------------------------------
