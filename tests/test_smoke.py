@@ -2076,3 +2076,53 @@ def test_jobs_json_includes_resume_and_cover_flags(monkeypatch, tmp_path):
     assert rows["with-files"]["has_cover_letter"] is True
     assert rows["no-files"]["has_resume"] is False
     assert rows["no-files"]["has_cover_letter"] is False
+
+
+def test_resume_download_sets_no_cache_header(monkeypatch, tmp_path):
+    """Regression guard: Chrome (and other browsers) apply heuristic caching
+    to .docx attachments that lack an explicit Cache-Control header. After
+    a user regenerated their resume, clicking Download served the OLD .docx
+    from heuristic cache because the browser never revalidated. Pin that
+    every download endpoint sends Cache-Control: no-cache so conditional
+    GET fires on every click — server returns 304 unchanged or 200 with
+    fresh bytes."""
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from src import utils as utils_module
+    from src.cover_letter import expected_cover_letter_path
+    from src.cover_letter import pipeline as cover_pipeline
+    from src.resume import expected_resume_path
+    from src.resume import pipeline as resume_pipeline
+    from web import app as web_app
+
+    monkeypatch.setattr(utils_module, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(resume_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cover_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(
+        db_module,
+        "get_job",
+        lambda h: {"hash": h, "title": "EM", "company": "Acme", "location": ""},
+    )
+    expected_resume_path("EM", "Acme", "").write_bytes(b"docx-bytes")
+    expected_cover_letter_path("EM", "Acme").write_bytes(b"cover-bytes")
+
+    client = TestClient(web_app.app)
+
+    # Resume download
+    r = client.get("/files/resume/abc123")
+    assert r.status_code == 200
+    cc = r.headers.get("cache-control", "").lower()
+    assert "no-cache" in cc, f"resume download missing no-cache: {cc!r}"
+
+    # Cover letter download
+    r = client.get("/files/cover/abc123")
+    assert r.status_code == 200
+    cc = r.headers.get("cache-control", "").lower()
+    assert "no-cache" in cc, f"cover download missing no-cache: {cc!r}"
+
+    # Bundle download (StreamingResponse path — different code path, same rule)
+    r = client.get("/files/bundle/abc123")
+    assert r.status_code == 200
+    cc = r.headers.get("cache-control", "").lower()
+    assert "no-cache" in cc, f"bundle download missing no-cache: {cc!r}"

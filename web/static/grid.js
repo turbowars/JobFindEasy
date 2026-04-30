@@ -57,18 +57,29 @@
               title="Open posting (marks job as applying)">Do IT↗</a>`;
   }
 
-  // Per-row Generate / Regenerate button. Two states:
-  //   - missing → accent button "+ Gen"   (POST /actions/generate/<kind>/<hash>)
-  //   - present → muted    "✓"            (POST /actions/regenerate/<kind>/<hash>)
-  // The grid auto-refreshes when the server fires `jia-generations-changed`
-  // (wired below in the gridOptions block) so the cell flips state once the
-  // .docx lands on disk. Clicks stopPropagation so the row-click → detail
-  // pane doesn't fire alongside.
-  function _genCellRenderer(kind, hasFlag, label) {
+  // Per-row Generate / Regenerate button. Three states:
+  //   - pending → "Running…" (disabled, dim) while the Sonnet worker grinds.
+  //               Sonnet takes 60–120s for resume, ~10s for cover; without
+  //               this state the cell flips back to "+ Gen" the instant the
+  //               request is QUEUED, misleading the user into thinking
+  //               nothing happened.
+  //   - missing → accent button "+ Gen" (POST /actions/generate/<kind>/<hash>)
+  //   - present → muted "✓ Regen"        (POST /actions/regenerate/<kind>/<hash>)
+  // The grid polls every 5s while ANY pending row is visible (set in
+  // refreshData below) so the cell flips automatically once the .docx
+  // lands. Clicks stopPropagation so the row-click → detail pane
+  // doesn't fire alongside.
+  function _genCellRenderer(kind, hasFlag, pendingFlag, label) {
     return function (params) {
-      const has = !!(params.data && params.data[hasFlag]);
-      const hash = (params.data && params.data.hash) || "";
+      const data = params.data || {};
+      const hash = data.hash || "";
       if (!hash) return "";
+      const pending = !!data[pendingFlag];
+      const has = !!data[hasFlag];
+      if (pending) {
+        return `<span class="text-[11px] text-ink-3 italic"
+                      title="${label} generation in progress…">Running…</span>`;
+      }
       const route = has ? "regenerate" : "generate";
       const tooltip = has
         ? `${label} generated · click to regenerate`
@@ -83,8 +94,12 @@
                       title="${tooltip}">${text}</button>`;
     };
   }
-  const resumeGenCellRenderer = _genCellRenderer("resume", "has_resume", "Resume");
-  const coverGenCellRenderer = _genCellRenderer("cover", "has_cover_letter", "Cover");
+  const resumeGenCellRenderer = _genCellRenderer(
+    "resume", "has_resume", "pending_resume", "Resume"
+  );
+  const coverGenCellRenderer = _genCellRenderer(
+    "cover", "has_cover_letter", "pending_cover", "Cover"
+  );
 
   function copyableCellRenderer(params) {
     const v = (params.value || "").replace(/"/g, "&quot;");
@@ -361,6 +376,23 @@
     },
   };
 
+  // While any row has pending_resume / pending_cover set, poll the grid
+  // every 5s so the "Running…" cells flip to "✓ Regen" automatically
+  // when the .docx lands on disk. The poll auto-stops once nothing's
+  // pending (no point burning queries when the dashboard is idle).
+  let _pendingPoll = null;
+
+  function _startPendingPoll() {
+    if (_pendingPoll) return;
+    _pendingPoll = setInterval(refreshData, 5000);
+  }
+
+  function _stopPendingPoll() {
+    if (!_pendingPoll) return;
+    clearInterval(_pendingPoll);
+    _pendingPoll = null;
+  }
+
   async function refreshData() {
     const showRejects =
       document.querySelector("[name=show_rejects]")?.checked || false;
@@ -371,6 +403,14 @@
         window._jiaGrid.setGridOption("rowData", data);
         document.getElementById("grid-count").textContent =
           `${data.length} jobs`;
+      }
+      const anyPending = data.some(
+        (row) => row.pending_resume || row.pending_cover,
+      );
+      if (anyPending) {
+        _startPendingPoll();
+      } else {
+        _stopPendingPoll();
       }
     } catch (e) {
       console.error("Failed to load jobs:", e);

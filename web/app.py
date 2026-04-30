@@ -717,6 +717,14 @@ def action_autoscrape_config(interval_seconds: int = Form(...), score_limit: int
     return Response(status_code=204, headers=_hx_trigger("jia-autoscrape-changed"))
 
 
+# Downloads need no-cache so browsers don't serve a stale .docx from
+# heuristic cache after a regeneration (Chrome happily caches attachments
+# with Last-Modified for ~hours without revalidating). With this header,
+# every click does a conditional GET — server returns 304 if unchanged,
+# 200 with fresh bytes if the file was just regenerated.
+DOWNLOAD_HEADERS = {"Cache-Control": "no-cache, must-revalidate"}
+
+
 @app.get("/files/resume/{job_hash}")
 def download_resume(job_hash: str):
     """Stream the .docx for download."""
@@ -728,7 +736,7 @@ def download_resume(job_hash: str):
     path = existing_resume_path(job["title"], job["company"], job.get("location") or "")
     if not path.exists():
         raise HTTPException(404, "resume not generated yet")
-    return FileResponse(path, filename=path.name)
+    return FileResponse(path, filename=path.name, headers=DOWNLOAD_HEADERS)
 
 
 @app.get("/files/cover/{job_hash}")
@@ -741,7 +749,7 @@ def download_cover(job_hash: str):
     path = expected_cover_letter_path(job["title"], job["company"])
     if not path.exists():
         raise HTTPException(404, "cover letter not generated yet")
-    return FileResponse(path, filename=path.name)
+    return FileResponse(path, filename=path.name, headers=DOWNLOAD_HEADERS)
 
 
 @app.get("/files/bundle/{job_hash}")
@@ -779,7 +787,10 @@ def download_bundle(job_hash: str):
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{bundle_name}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{bundle_name}"',
+            **DOWNLOAD_HEADERS,
+        },
     )
 
 
@@ -865,6 +876,14 @@ def api_jobs_json(show_rejects: bool = False):
                 "url": r.get("url") or "",
                 "has_resume": has_resume,
                 "has_cover_letter": has_cover_letter,
+                # In-flight generation markers — drive the grid's
+                # "Running…" cell state so the user sees that a click
+                # actually queued work even while the Sonnet call is
+                # still executing (60–120s for resume). Cleared by the
+                # done-callback in state.submit_generation regardless
+                # of success/failure, so a stuck row can't lie.
+                "pending_resume": state.pending_started_at(r["hash"], "resume") is not None,
+                "pending_cover": state.pending_started_at(r["hash"], "cover") is not None,
             }
         )
     return JSONResponse(out)
