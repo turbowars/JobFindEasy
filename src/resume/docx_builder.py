@@ -7,15 +7,16 @@ Education & Certifications -> Skills.
 Bullets honor inline `**bold**` markers so the LLM can emphasize metric
 phrases without us round-tripping through markdown.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 from docx import Document
-from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
-from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt
 
 from .template import Resume
 
@@ -65,6 +66,12 @@ def _inline_bold(p, text: str, *, base_size: int = 10, italic: bool = False) -> 
 
 
 def build_docx(resume: Resume, output_path: Path) -> None:
+    """Render resume.
+
+    Section order branches on `resume.track`:
+      EM: Header -> Summary -> Highlights -> Experience -> Projects -> Education -> Skills
+      IC: Header -> Summary -> Skills -> Experience -> Projects -> Education
+    """
     doc = Document()
 
     for section in doc.sections:
@@ -101,8 +108,14 @@ def build_docx(resume: Resume, output_path: Path) -> None:
         sum_p = doc.add_paragraph()
         _inline_bold(sum_p, resume.summary, base_size=10)
 
-    # ----- Professional Highlights -----
-    if resume.highlights:
+    is_ic = (resume.track or "em").lower() == "ic"
+
+    # ----- IC track: Skills first -----
+    if is_ic and resume.skills:
+        _render_skills(doc, resume)
+
+    # ----- Professional Highlights (EM only) -----
+    if resume.highlights and not is_ic:
         _section_header(doc, "Professional Highlights")
         for h in resume.highlights:
             if not h:
@@ -178,18 +191,24 @@ def build_docx(resume: Resume, output_path: Path) -> None:
             bp.paragraph_format.space_after = Pt(2)
             _inline_bold(bp, entry, base_size=10)
 
-    # ----- Core Technical Skills -----
-    if resume.skills:
-        _section_header(doc, "Core Technical Skills")
-        for cat in resume.skills:
-            if not cat.label or not cat.items:
-                continue
-            p = doc.add_paragraph()
-            p.paragraph_format.left_indent = Inches(0.18)
-            p.paragraph_format.first_line_indent = Inches(-0.18)
-            p.paragraph_format.space_after = Pt(3)
-            _set_arial(p.add_run(f"{cat.label}: "), size=10, bold=True)
-            _set_arial(p.add_run(", ".join(cat.items)), size=10)
+    # ----- EM track: Core Technical Skills last -----
+    if not is_ic and resume.skills:
+        _render_skills(doc, resume)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_path))
+
+
+def _render_skills(doc: Document, resume: Resume) -> None:
+    """Render the labeled skills section. Used in two positions depending on
+    track (above Experience for IC, below Education for EM)."""
+    _section_header(doc, "Core Technical Skills")
+    for cat in resume.skills:
+        if not cat.label or not cat.items:
+            continue
+        p = doc.add_paragraph()
+        p.paragraph_format.left_indent = Inches(0.18)
+        p.paragraph_format.first_line_indent = Inches(-0.18)
+        p.paragraph_format.space_after = Pt(3)
+        _set_arial(p.add_run(f"{cat.label}: "), size=10, bold=True)
+        _set_arial(p.add_run(", ".join(cat.items)), size=10)

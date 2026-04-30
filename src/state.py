@@ -19,6 +19,7 @@ Public surface:
 
     AUTO_RESUME_CAP_PER_CYCLE                   → int
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,7 +28,6 @@ import threading
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Optional
 
 from .generate.cover_letter import generate_cover_letter
 from .resume import generate_resume
@@ -47,7 +47,7 @@ _GENERATIONS_CAP = 200  # FIFO cap on generation log to bound memory
 # ---------------------------------------------------------------------------
 
 _executor_lock = threading.Lock()
-_executor: Optional[ThreadPoolExecutor] = None
+_executor: ThreadPoolExecutor | None = None
 
 
 def get_executor() -> ThreadPoolExecutor:
@@ -78,20 +78,20 @@ def submit_generation(
     `kind` is "resume" or "cover".
     """
     if kind == "resume":
-        fut = get_executor().submit(
-            generate_resume, title, company, jd_text, location=location
-        )
+        fut = get_executor().submit(generate_resume, title, company, jd_text, location=location)
     else:
         fut = get_executor().submit(generate_cover_letter, title, company, jd_text)
     with _GENERATIONS_LOCK:
-        _GENERATIONS.append({
-            "id": uuid.uuid4().hex[:8],
-            "kind": kind,
-            "title": title,
-            "company": company,
-            "future": fut,
-            "started_at": time.time(),
-        })
+        _GENERATIONS.append(
+            {
+                "id": uuid.uuid4().hex[:8],
+                "kind": kind,
+                "title": title,
+                "company": company,
+                "future": fut,
+                "started_at": time.time(),
+            }
+        )
         if len(_GENERATIONS) > _GENERATIONS_CAP:
             del _GENERATIONS[: len(_GENERATIONS) - _GENERATIONS_CAP]
     return fut
@@ -122,7 +122,7 @@ def clear_pending(job_hash: str, kind: str) -> None:
         _PENDING_MARKERS.pop((job_hash, kind), None)
 
 
-def pending_started_at(job_hash: str, kind: str) -> Optional[float]:
+def pending_started_at(job_hash: str, kind: str) -> float | None:
     with _PENDING_LOCK:
         return _PENDING_MARKERS.get((job_hash, kind))
 
@@ -132,29 +132,36 @@ def pending_started_at(job_hash: str, kind: str) -> Optional[float]:
 # ---------------------------------------------------------------------------
 
 AUTOSCRAPE_LOCK = threading.Lock()
-_AUTO_STATE: Optional[dict] = None
-_AUTO_THREAD: Optional[threading.Thread] = None
+_AUTO_STATE: dict | None = None
+_AUTO_THREAD: threading.Thread | None = None
 
 
 def _autoscrape_loop_factory():
     """Lazy-import the runner so this module doesn't pull DB on import."""
+    import json
+
     from . import db
     from .enrichment.llm_scorer import compute_tier, make_client, score_job
     from .enrichment.prefilter import prefilter as run_prefilter
     from .resume import autogen_resume_if_missing
     from .scrapers.runner import run_all_sync
-    import json
 
     def _run_pipeline_headless(score_limit: int) -> dict:
         out = {
-            "new": 0, "skipped": 0, "prefilter_pass": 0,
-            "scored": 0, "auto_resumes": 0, "ghosted": 0, "error": None,
+            "new": 0,
+            "skipped": 0,
+            "prefilter_pass": 0,
+            "scored": 0,
+            "auto_resumes": 0,
+            "ghosted": 0,
+            "error": None,
         }
         try:
             db.init_db()
             # Ghost-sweep: applied rows older than N days that haven't moved
             # get auto-flipped to closed:ghosted. Cheap single UPDATE.
             from .status import GHOST_SWEEP_DAYS
+
             ghost_days = int(os.environ.get("GHOST_SWEEP_DAYS", GHOST_SWEEP_DAYS))
             out["ghosted"] = db.sweep_ghosted(ghost_days)
 
@@ -164,21 +171,24 @@ def _autoscrape_loop_factory():
                 out["new"], out["skipped"] = new, skipped
 
             for j in db.get_unfiltered():
-                ok, reason, sponsorship = run_prefilter(
-                    j["title"], j["description"] or ""
-                )
+                ok, reason, sponsorship = run_prefilter(j["title"], j["description"] or "")
                 db.update_prefilter(j["hash"], ok, reason, sponsorship)
                 if ok:
                     out["prefilter_pass"] += 1
 
             pending = db.get_unscored_passed()[:score_limit]
             if pending:
-                model = os.environ.get("SCORING_MODEL", "anthropic/claude-haiku-4.5")
+                from .llm import get_model
+
+                model = get_model("job_scoring")
                 client = make_client()
                 for j in pending:
                     result = score_job(
-                        client, model,
-                        title=j["title"], company=j["company"], location=j["location"],
+                        client,
+                        model,
+                        title=j["title"],
+                        company=j["company"],
+                        location=j["location"],
                         description=j["description"] or "",
                         sponsorship=j["sponsorship_status"],
                     )
@@ -187,22 +197,30 @@ def _autoscrape_loop_factory():
                         continue
                     total = int(result.get("total", 0))
                     tier = result.get("tier") or compute_tier(total)
-                    breakdown = json.dumps({
-                        k: result.get(k) for k in (
-                            "title_match", "skills_match", "leadership_scope",
-                            "domain_alignment", "location_fit", "comp_confidence",
-                        )
-                    })
-                    db.update_score(
-                        j["hash"], total, breakdown, result.get("rationale", ""), tier
+                    breakdown = json.dumps(
+                        {
+                            k: result.get(k)
+                            for k in (
+                                "title_match",
+                                "skills_match",
+                                "leadership_scope",
+                                "domain_alignment",
+                                "location_fit",
+                                "comp_confidence",
+                            )
+                        }
                     )
+                    db.update_score(j["hash"], total, breakdown, result.get("rationale", ""), tier)
                     out["scored"] += 1
                     if (
-                        tier == "strong" and total >= 80
+                        tier == "strong"
+                        and total >= 80
                         and out["auto_resumes"] < AUTO_RESUME_CAP_PER_CYCLE
                     ):
                         path = autogen_resume_if_missing(
-                            j["title"], j["company"], j["description"] or "",
+                            j["title"],
+                            j["company"],
+                            j["description"] or "",
                             location=j.get("location") or "",
                         )
                         if path:
@@ -269,8 +287,10 @@ def get_autoscrape_state() -> dict:
             }
         if _AUTO_THREAD is None or not _AUTO_THREAD.is_alive():
             _AUTO_THREAD = threading.Thread(
-                target=_autoscrape_loop, args=(_AUTO_STATE,),
-                daemon=True, name="jia-autoscrape",
+                target=_autoscrape_loop,
+                args=(_AUTO_STATE,),
+                daemon=True,
+                name="jia-autoscrape",
             )
             _AUTO_THREAD.start()
     return _AUTO_STATE
@@ -285,9 +305,9 @@ def submit_all_missing_strong_fits(min_score: int = 80) -> int:
     df = db.to_dataframe()
     if df.empty:
         return 0
-    strong = df[
-        (df["score_total"].fillna(0) >= min_score) & (df["tier"] == "strong")
-    ].sort_values("score_total", ascending=False)
+    strong = df[(df["score_total"].fillna(0) >= min_score) & (df["tier"] == "strong")].sort_values(
+        "score_total", ascending=False
+    )
     submitted = 0
     for _, r in strong.iterrows():
         title, company = r["title"], r["company"]
@@ -295,9 +315,7 @@ def submit_all_missing_strong_fits(min_score: int = 80) -> int:
         path = existing_resume_path(title, company, location)
         if path.exists():
             continue
-        submit_generation(
-            "resume", title, company, r.get("description") or "", location=location
-        )
+        submit_generation("resume", title, company, r.get("description") or "", location=location)
         mark_pending(r["hash"], "resume")
         submitted += 1
     return submitted

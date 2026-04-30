@@ -3,13 +3,13 @@
 Default: macOS osascript (no deps). Optional: Pushover for mobile push.
 Fall through to terminal print if neither is configured.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import shlex
 import subprocess
-from typing import Iterable
 
 import httpx
 
@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 def notify_macos(title: str, body: str) -> bool:
     try:
-        script = f'display notification {shlex.quote(body)} with title {shlex.quote(title)}'
+        script = f"display notification {shlex.quote(body)} with title {shlex.quote(title)}"
         subprocess.run(["osascript", "-e", script], check=True, capture_output=True, timeout=5)
         return True
     except (subprocess.SubprocessError, FileNotFoundError):

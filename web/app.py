@@ -13,6 +13,7 @@ Route convention:
 
 The legacy Streamlit app keeps running on :8501 in parallel during cutover.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,10 +21,9 @@ import logging
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -39,12 +39,15 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+import mammoth  # noqa: E402  (used by partial_artifacts to render .docx previews)
+
 from src import db, state  # noqa: E402
 from src.generate.cover_letter import expected_cover_letter_path  # noqa: E402
 from src.resume import (  # noqa: E402
-    expected_resume_path,
     existing_resume_path,
+    expected_resume_path,
 )
+from src.resume import profile as resume_profile  # noqa: E402
 from src.scrapers.base import BaseScraper  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -84,7 +87,7 @@ SPONSOR_MAP = {
 }
 
 
-def _score_color(score: Optional[float]) -> str:
+def _score_color(score: float | None) -> str:
     if score is None:
         return "#6b7280"
     s = int(score)
@@ -97,7 +100,7 @@ def _score_color(score: Optional[float]) -> str:
     return "#6b7280"
 
 
-def _fmt_relative(ts: Optional[float]) -> str:
+def _fmt_relative(ts: float | None) -> str:
     if ts is None:
         return "never"
     delta = int(datetime.now().timestamp() - ts)
@@ -176,6 +179,7 @@ def _filtered_df(filters: dict):
 # Routes — full page
 # ---------------------------------------------------------------------------
 
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     df = db.to_dataframe()
@@ -197,18 +201,21 @@ def index(request: Request):
 # Routes — HTMX partials
 # ---------------------------------------------------------------------------
 
+
 @app.get("/partials/detail/{job_hash}", response_class=HTMLResponse)
 def partial_detail(request: Request, job_hash: str):
     from src.status import (
-        STATUSES, STATUS_LABEL, STATUS_GLYPH,
-        CLOSED_REASONS, GHOST_SWEEP_DAYS,
+        CLOSED_REASONS,
+        GHOST_SWEEP_DAYS,
+        STATUS_GLYPH,
+        STATUS_LABEL,
+        STATUSES,
     )
+
     job = db.get_job(job_hash)
     if not job:
         raise HTTPException(404, "job not found")
-    job["_clean_description"] = (
-        BaseScraper.clean_html(job.get("description") or "")[:8000]
-    )
+    job["_clean_description"] = BaseScraper.clean_html(job.get("description") or "")[:8000]
     job["_score_breakdown"] = (
         json.loads(job["score_breakdown"]) if job.get("score_breakdown") else None
     )
@@ -247,9 +254,7 @@ def partial_artifacts(request: Request, job_hash: str):
     if not job:
         return HTMLResponse("<div></div>")
 
-    resume_path = existing_resume_path(
-        job["title"], job["company"], job.get("location") or ""
-    )
+    resume_path = existing_resume_path(job["title"], job["company"], job.get("location") or "")
     cover_path = expected_cover_letter_path(job["title"], job["company"])
     pending_resume = state.pending_started_at(job_hash, "resume")
     pending_cover = state.pending_started_at(job_hash, "cover")
@@ -261,12 +266,10 @@ def partial_artifacts(request: Request, job_hash: str):
         state.clear_pending(job_hash, "cover")
         pending_cover = None
 
-    # Lazy mammoth import — only when actually rendering a preview
     resume_html = None
     scores = None
     if resume_path.exists():
         try:
-            import mammoth
             with open(resume_path, "rb") as f:
                 resume_html = mammoth.convert_to_html(f).value
         except Exception as e:
@@ -281,7 +284,6 @@ def partial_artifacts(request: Request, job_hash: str):
     cover_html = None
     if cover_path.exists():
         try:
-            import mammoth
             with open(cover_path, "rb") as f:
                 cover_html = mammoth.convert_to_html(f).value
         except Exception as e:
@@ -325,7 +327,8 @@ def partial_generations(request: Request):
 @app.get("/partials/badges", response_class=HTMLResponse)
 def partial_badges(request: Request):
     """Live count badges + pipeline counts in the sidebar — polled every 5s."""
-    from src.status import STATUSES, STATUS_LABEL, STATUS_GLYPH
+    from src.status import STATUS_GLYPH, STATUS_LABEL, STATUSES
+
     df = db.to_dataframe()
     if df.empty:
         return HTMLResponse('<div id="badges"><small>0 jobs</small></div>')
@@ -342,9 +345,9 @@ def partial_badges(request: Request):
         ).sum()
     )
     pipeline = [
-        {"key": s, "label": STATUS_LABEL[s], "glyph": STATUS_GLYPH[s],
-         "count": counts.get(s, 0)}
-        for s in STATUSES if s != "new"
+        {"key": s, "label": STATUS_LABEL[s], "glyph": STATUS_GLYPH[s], "count": counts.get(s, 0)}
+        for s in STATUSES
+        if s != "new"
     ]
     return templates.TemplateResponse(
         request,
@@ -387,6 +390,7 @@ def partial_autoscrape(request: Request):
 # Routes — actions (mutations)
 # ---------------------------------------------------------------------------
 
+
 @app.post("/actions/status/{job_hash}")
 def action_status(
     job_hash: str,
@@ -401,7 +405,7 @@ def action_status(
     try:
         db.set_status(job_hash, status, closed_reason or None)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
     return Response(status_code=204)
 
 
@@ -450,9 +454,7 @@ def action_regenerate(kind: str, job_hash: str):
     if not job:
         raise HTTPException(404, "job not found")
     if kind == "resume":
-        path = expected_resume_path(
-            job["title"], job["company"], job.get("location") or ""
-        )
+        path = expected_resume_path(job["title"], job["company"], job.get("location") or "")
         try:
             path.unlink(missing_ok=True)
             path.with_suffix(".scores.json").unlink(missing_ok=True)
@@ -487,10 +489,9 @@ def action_inject_url(url: str = Form(...)):
     upserts into the DB, and runs prefilter + score inline so the row is
     fully usable the moment it appears in the grid.
     """
-    import os as _os
-    from src.scrapers.url_inject import inject_from_url
+    from src.enrichment.llm_scorer import compute_tier, make_client, score_job
     from src.enrichment.prefilter import prefilter as run_prefilter
-    from src.enrichment.llm_scorer import score_job, compute_tier, make_client
+    from src.scrapers.url_inject import inject_from_url
 
     job, status = inject_from_url(url)
     if not job:
@@ -499,8 +500,13 @@ def action_inject_url(url: str = Form(...)):
     inserted = db.upsert_job(job)
     if not inserted:
         return JSONResponse(
-            {"ok": True, "hash": job.hash, "duplicate": True,
-             "title": job.title, "company": job.company}
+            {
+                "ok": True,
+                "hash": job.hash,
+                "duplicate": True,
+                "title": job.title,
+                "company": job.company,
+            }
         )
 
     ok, reason, sponsorship = run_prefilter(job.title, job.description or "")
@@ -508,30 +514,49 @@ def action_inject_url(url: str = Form(...)):
 
     if ok:
         try:
+            from src.llm import get_model
+
             client = make_client()
-            model = _os.environ.get("SCORING_MODEL", "anthropic/claude-haiku-4.5")
+            model = get_model("job_scoring")
             result = score_job(
-                client, model,
-                title=job.title, company=job.company, location=job.location,
-                description=job.description or "", sponsorship=sponsorship,
+                client,
+                model,
+                title=job.title,
+                company=job.company,
+                location=job.location,
+                description=job.description or "",
+                sponsorship=sponsorship,
             )
             if result:
                 total = int(result.get("total", 0))
                 tier = result.get("tier") or compute_tier(total)
-                breakdown = json.dumps({k: result.get(k) for k in [
-                    "title_match", "skills_match", "leadership_scope",
-                    "domain_alignment", "location_fit", "comp_confidence",
-                ]})
-                db.update_score(job.hash, total, breakdown,
-                                result.get("rationale", ""), tier)
+                breakdown = json.dumps(
+                    {
+                        k: result.get(k)
+                        for k in [
+                            "title_match",
+                            "skills_match",
+                            "leadership_scope",
+                            "domain_alignment",
+                            "location_fit",
+                            "comp_confidence",
+                        ]
+                    }
+                )
+                db.update_score(job.hash, total, breakdown, result.get("rationale", ""), tier)
         except Exception as e:
             log.warning("inline score after inject failed: %s", e)
 
-    return JSONResponse({
-        "ok": True, "hash": job.hash, "duplicate": False,
-        "title": job.title, "company": job.company,
-        "prefilter_passed": ok,
-    })
+    return JSONResponse(
+        {
+            "ok": True,
+            "hash": job.hash,
+            "duplicate": False,
+            "title": job.title,
+            "company": job.company,
+            "prefilter_passed": ok,
+        }
+    )
 
 
 @app.post("/actions/clear-completed-generations")
@@ -549,9 +574,7 @@ def action_autoscrape_toggle(enabled: str = Form(...)):
 
 
 @app.post("/actions/autoscrape/config")
-def action_autoscrape_config(
-    interval_seconds: int = Form(...), score_limit: int = Form(...)
-):
+def action_autoscrape_config(interval_seconds: int = Form(...), score_limit: int = Form(...)):
     s = state.get_autoscrape_state()
     with state.AUTOSCRAPE_LOCK:
         s["interval_seconds"] = max(60, int(interval_seconds))
@@ -563,12 +586,11 @@ def action_autoscrape_config(
 def download_resume(job_hash: str):
     """Stream the .docx for download."""
     from fastapi.responses import FileResponse
+
     job = db.get_job(job_hash)
     if not job:
         raise HTTPException(404, "job not found")
-    path = existing_resume_path(
-        job["title"], job["company"], job.get("location") or ""
-    )
+    path = existing_resume_path(job["title"], job["company"], job.get("location") or "")
     if not path.exists():
         raise HTTPException(404, "resume not generated yet")
     return FileResponse(path, filename=path.name)
@@ -577,6 +599,7 @@ def download_resume(job_hash: str):
 @app.get("/files/cover/{job_hash}")
 def download_cover(job_hash: str):
     from fastapi.responses import FileResponse
+
     job = db.get_job(job_hash)
     if not job:
         raise HTTPException(404, "job not found")
@@ -604,33 +627,38 @@ def api_jobs_json(show_rejects: bool = False):
         ascending=[False, False],
         na_position="last",
     )
+
     def _clean(v):
         # pandas turns NULL text columns into float NaN; json.dumps rejects them.
-        if v is None: return None
-        if isinstance(v, float) and v != v: return None
+        if v is None:
+            return None
+        if isinstance(v, float) and v != v:  # NaN check
+            return None
         return v
 
     out = []
     for r in df.to_dict(orient="records"):
         score = r.get("score_total")
-        out.append({
-            "hash": r["hash"],
-            "score": int(score) if score is not None and score == score else None,
-            "tier": r.get("tier") or "",
-            "title": r.get("title") or "",
-            "company": r.get("company") or "",
-            "location": r.get("location") or "",
-            "salary_min": _clean(r.get("salary_min")),
-            "salary_max": _clean(r.get("salary_max")),
-            "remote": bool(r.get("remote")) if r.get("remote") is not None else None,
-            "sponsorship": r.get("sponsorship_status") or "unknown",
-            "posted": (str(r.get("posted_at") or ""))[:10],
-            "source": r.get("source") or "",
-            "status": _clean(r.get("status")) or "new",
-            "status_at": _clean(r.get("status_at")),
-            "closed_reason": _clean(r.get("closed_reason")),
-            "url": r.get("url") or "",
-        })
+        out.append(
+            {
+                "hash": r["hash"],
+                "score": int(score) if score is not None and score == score else None,
+                "tier": r.get("tier") or "",
+                "title": r.get("title") or "",
+                "company": r.get("company") or "",
+                "location": r.get("location") or "",
+                "salary_min": _clean(r.get("salary_min")),
+                "salary_max": _clean(r.get("salary_max")),
+                "remote": bool(r.get("remote")) if r.get("remote") is not None else None,
+                "sponsorship": r.get("sponsorship_status") or "unknown",
+                "posted": (str(r.get("posted_at") or ""))[:10],
+                "source": r.get("source") or "",
+                "status": _clean(r.get("status")) or "new",
+                "status_at": _clean(r.get("status_at")),
+                "closed_reason": _clean(r.get("closed_reason")),
+                "url": r.get("url") or "",
+            }
+        )
     return JSONResponse(out)
 
 
@@ -656,64 +684,107 @@ def api_claude_prompt():
 
     lines: list[str] = []
     lines.append("You are operating inside Dheeraj's personal job-hunt dashboard.")
-    lines.append("Dashboard URL: http://127.0.0.1:8826  (this is your control surface — keep it open)")
+    lines.append(
+        "Dashboard URL: http://127.0.0.1:8826  (this is your control surface — keep it open)"
+    )
     lines.append("")
     lines.append("This is Dheeraj's personal job hunt dashboard. Your job is to apply to")
     lines.append("the jobs listed at the bottom of this prompt and ALERT HIM BEFORE")
     lines.append("SUBMITTING each one so he can verify the information. Work through the")
     lines.append("entire list continuously — only pause for input or to wait for his")
-    lines.append("\"go ahead\" before submit. After he submits one job, do NOT stop:")
+    lines.append('"go ahead" before submit. After he submits one job, do NOT stop:')
     lines.append("immediately move on to the next one.")
     lines.append("")
+    # Pull facts from src.resume.profile — single source of truth for years,
+    # current role, application-form answers. Edit profile.py to update these
+    # everywhere (resume + this prompt + future autofill tooling).
+    current_role = resume_profile.EXPERIENCE[0]
+    appl = resume_profile.APPLICATION_DEFAULTS
     lines.append("## About Dheeraj")
-    lines.append("- US-based, on H-1B (sponsorship REQUIRED — if a posting denies sponsorship, skip it and tell him why).")
-    lines.append("- Targeting: Engineering Manager / Staff Frontend / Frontend Platform leadership roles.")
-    lines.append("- Email: turbowars@gmail.com")
-    lines.append("- 14+ years engineering, last role: Engineering Manager. Strong frontend platform / design-systems / micro-frontend background.")
-    lines.append("- Comp expectation: market for senior EM/Staff in the US (use 'competitive' or '$220k+' if asked; defer to recruiter on specifics).")
-    lines.append("- No notice period — immediately available to join.")
-    lines.append("- Open to: Remote (US), Hybrid (Bay Area / NYC). Not relocating.")
-    lines.append("- Authorized to work in the US; requires H-1B transfer.")
+    lines.append(
+        f"- {appl['work_authorization']} If a posting denies sponsorship, skip it and tell him why."
+    )
+    lines.append(f"- Targeting: {appl['targeting']}.")
+    lines.append(f"- Email: {appl['email']}")
+    lines.append(
+        f"- {resume_profile.YEARS_OF_EXPERIENCE} years engineering, "
+        f"current role: {current_role['title']} at {current_role['company']}. "
+        "Strong frontend platform / design-systems / micro-frontend background."
+    )
+    lines.append(
+        f"- Comp expectation: {appl['comp_expectation']} (use 'competitive' "
+        "if asked; defer to recruiter on specifics)."
+    )
+    lines.append(f"- {appl['notice_period']}.")
+    lines.append(f"- Open to: {appl['open_to']}")
     lines.append("")
     lines.append("## Tab discipline")
     lines.append("")
     lines.append("Two tabs are in play at all times:")
-    lines.append("- **Dashboard tab** (http://127.0.0.1:8826) — already open, stays open. Use it to read the queue, find each job's row, and click status pills to mark it applied.")
-    lines.append("- **Job tab** — a NEW tab per job. ALWAYS open the apply URL in a new tab (right-click → Open in new tab, or middle-click). Never navigate the dashboard tab away from the dashboard.")
+    lines.append(
+        "- **Dashboard tab** (http://127.0.0.1:8826) — already open, stays open. Use it to read the queue, find each job's row, and click status pills to mark it applied."
+    )
+    lines.append(
+        "- **Job tab** — a NEW tab per job. ALWAYS open the apply URL in a new tab (right-click → Open in new tab, or middle-click). Never navigate the dashboard tab away from the dashboard."
+    )
     lines.append("")
-    lines.append("After Dheeraj submits a job, you may close that job's tab and switch back to the dashboard tab to mark it applied. Then open the NEXT job in a fresh new tab.")
+    lines.append(
+        "After Dheeraj submits a job, you may close that job's tab and switch back to the dashboard tab to mark it applied. Then open the NEXT job in a fresh new tab."
+    )
     lines.append("")
-    lines.append("## Workflow — repeat for every job in the queue below, without pausing between jobs")
+    lines.append(
+        "## Workflow — repeat for every job in the queue below, without pausing between jobs"
+    )
     lines.append("")
     lines.append("1. Open the job's apply URL in a NEW TAB (do not replace the dashboard).")
-    lines.append("2. Wait for the Simplify Chrome extension to autofill the form. Give it ~5–10 seconds; some forms take longer.")
+    lines.append(
+        "2. Wait for the Simplify Chrome extension to autofill the form. Give it ~5–10 seconds; some forms take longer."
+    )
     lines.append("3. Verify the answers Simplify filled. If any are wrong, fix them.")
-    lines.append("4. Answer remaining form fields Simplify missed, using the context above. If a question is not covered by the context, PAUSE and ASK Dheeraj — do not guess.")
-    lines.append("5. File-upload widgets cannot be filled programmatically. PAUSE and tell Dheeraj to attach the tailored resume from ~/Public/JobFindEasy/ on his machine. Wait until he confirms it's attached.")
-    lines.append("6. ALERT Dheeraj: \"Job [N] ready to submit\" + a brief summary of every filled answer. Wait for an explicit \"go ahead\" reply. Never submit without it.")
+    lines.append(
+        "4. Answer remaining form fields Simplify missed, using the context above. If a question is not covered by the context, PAUSE and ASK Dheeraj — do not guess."
+    )
+    lines.append(
+        "5. File-upload widgets cannot be filled programmatically. PAUSE and tell Dheeraj to attach the tailored resume from ~/Public/JobFindEasy/ on his machine. Wait until he confirms it's attached."
+    )
+    lines.append(
+        '6. ALERT Dheeraj: "Job [N] ready to submit" + a brief summary of every filled answer. Wait for an explicit "go ahead" reply. Never submit without it.'
+    )
     lines.append("7. After Dheeraj confirms, click Submit (or let him click — either is fine).")
-    lines.append("8. Switch to the dashboard tab. Use the search box at the top of the grid (the input with the ⌕ icon) to type part of the company name or title — this filters the grid to one row. Click that row to open the detail pane on the right, then click the **✓ Applied** pill in the status strip. The grid chip will update to \"Applied\" — that confirms success. Clear the search box afterwards before moving on.")
+    lines.append(
+        '8. Switch to the dashboard tab. Use the search box at the top of the grid (the input with the ⌕ icon) to type part of the company name or title — this filters the grid to one row. Click that row to open the detail pane on the right, then click the **✓ Applied** pill in the status strip. The grid chip will update to "Applied" — that confirms success. Clear the search box afterwards before moving on.'
+    )
     lines.append("9. Optionally close the job's tab to keep the browser tidy.")
-    lines.append("10. Immediately open the NEXT job in a new tab and start at step 1. Do NOT wait for an acknowledgement between jobs.")
+    lines.append(
+        "10. Immediately open the NEXT job in a new tab and start at step 1. Do NOT wait for an acknowledgement between jobs."
+    )
     lines.append("")
-    lines.append("After the last job, post a final summary: how many were submitted, how many were skipped (and why).")
+    lines.append(
+        "After the last job, post a final summary: how many were submitted, how many were skipped (and why)."
+    )
     lines.append("")
     lines.append("## When to pause (and only when)")
     lines.append("- Step 4: a form field's answer is not in the context. ASK.")
     lines.append("- Step 5: a file-upload widget needs Dheeraj's manual attach.")
-    lines.append("- Step 6: every \"ready to submit\" moment. WAIT for \"go ahead\".")
-    lines.append("- Otherwise: keep moving. Do not announce \"starting job N\" or ask \"shall I continue\". Just continue.")
+    lines.append('- Step 6: every "ready to submit" moment. WAIT for "go ahead".')
+    lines.append(
+        '- Otherwise: keep moving. Do not announce "starting job N" or ask "shall I continue". Just continue.'
+    )
     lines.append("")
     lines.append("## Hard rules")
-    lines.append("- Never submit without an explicit \"go ahead\".")
+    lines.append('- Never submit without an explicit "go ahead".')
     lines.append("- Never navigate the dashboard tab away from http://127.0.0.1:8826.")
     lines.append("- Never invent data. If the context above doesn't cover a question, ask.")
-    lines.append("- If a posting denies sponsorship, skip it (don't apply). Mention it in the final summary.")
+    lines.append(
+        "- If a posting denies sponsorship, skip it (don't apply). Mention it in the final summary."
+    )
     lines.append("")
     lines.append(f"## Queue ({len(queue)} job{'s' if len(queue) != 1 else ''})")
     lines.append("")
     if not queue:
-        lines.append("(empty — Dheeraj hasn't shortlisted any jobs yet. Tell him to shortlist some from the dashboard first.)")
+        lines.append(
+            "(empty — Dheeraj hasn't shortlisted any jobs yet. Tell him to shortlist some from the dashboard first.)"
+        )
     else:
         for i, j in enumerate(queue, start=1):
             score = j.get("score_total")

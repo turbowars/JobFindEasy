@@ -3,9 +3,11 @@
 Single Sonnet call. The prompt is intentionally short — all locked facts
 travel as structured profile data in the user message, not as restated rules.
 """
+
 from __future__ import annotations
 
 import json
+
 from . import profile
 
 SYSTEM_PROMPT = """You produce a tailored resume for Dheeraj Sampath as a single JSON object. No prose around the JSON, no markdown fences.
@@ -38,7 +40,6 @@ The user message contains:
   "skills":   [{"label": "...", "items": ["..."]}],
   "conditional_cert": "cua" | "microsoft",
   "tailoring_report": {
-    "jd_terms_matched":     ["JD term -> where it appears"],
     "priorities_addressed": ["JD priority -> bullet that covers it"],
     "missing_signals":      ["JD asks the profile genuinely cannot support"]
   }
@@ -52,10 +53,9 @@ The user message contains:
 - Years of experience: use the locked value verbatim.
 - Plain prose: periods, commas, parentheses, hyphens.
 
-## Highlights (exactly 4 quantified bullets)
-- Each bullet contains a number, percentage, dollar amount, scope size, or named tool.
-- Shape: "Delivered platform features in agile sprints, reducing release cycles 30% while improving reliability."
-- Pull metrics from the bullet pools; lightly rephrase for JD alignment; keep every number unchanged.
+## Highlights (EM track only — return [] for IC)
+- EM track: exactly 4 quantified bullets. Each bullet contains a number, percentage, dollar amount, scope size, or named tool. Shape: "Delivered platform features in agile sprints, reducing release cycles 30% while improving reliability." Pull metrics from the bullet pools; lightly rephrase for JD alignment; keep every number unchanged.
+- IC track: return an empty array. The IC resume leads with Skills.
 
 ## Experience (one entry per locked role, 7 total)
 - Pick 4-7 bullets per role from that role's pool. Older roles (Deloitte, Neudesic): 2-3 bullets.
@@ -133,11 +133,7 @@ def _projects_block() -> str:
     out: list[str] = []
     for p in profile.PROJECTS_MASTER:
         tags = ", ".join(p.get("tags") or [])
-        out.append(
-            f"### name: {p['name']}\n"
-            f"- Description: {p['description']}\n"
-            f"- Tags: {tags}"
-        )
+        out.append(f"### name: {p['name']}\n- Description: {p['description']}\n- Tags: {tags}")
     return "\n".join(out)
 
 
@@ -152,16 +148,27 @@ def build_user_message(
     jd_title: str,
     jd_company: str,
     jd_text: str,
+    track: str = "em",
     must_cover: dict | None = None,
     retry_feedback: str = "",
 ) -> str:
     jd_excerpt = (jd_text or "(JD text not available)").strip()[:10000]
+    track_label = "EM (management)" if track == "em" else "IC (engineering)"
+    highlights_directive = (
+        "EM track: produce exactly 4 Professional Highlights bullets."
+        if track == "em"
+        else "IC track: omit Professional Highlights — return an empty list "
+        "for the `highlights` field. The IC resume layout leads with "
+        "Skills instead."
+    )
     parts = [
         f"TARGET TITLE: {jd_title}",
         f"TARGET COMPANY: {jd_company}",
+        f"TRACK: {track_label}",
         "",
         "LOCKED FACTS (use exact values; do not infer or undercount):",
         f"- Years of experience: {profile.YEARS_OF_EXPERIENCE}",
+        f"- {highlights_directive}",
         "",
         "JOB DESCRIPTION:",
         jd_excerpt,
@@ -179,29 +186,33 @@ def build_user_message(
                 parts.append(f"- {tier.capitalize()}: {', '.join(items)}")
         parts.append("")
     if retry_feedback:
-        parts.extend([
-            "RETRY FEEDBACK (the previous attempt scored low on ATS — fix these):",
-            retry_feedback,
+        parts.extend(
+            [
+                "RETRY FEEDBACK (the previous attempt scored low on ATS — fix these):",
+                retry_feedback,
+                "",
+            ]
+        )
+    parts.extend(
+        [
+            "=========================",
+            "LOCKED EXPERIENCE (pick from these bullet pools):",
+            "=========================",
+            _experience_block(),
             "",
-        ])
-    parts.extend([
-        "=========================",
-        "LOCKED EXPERIENCE (pick from these bullet pools):",
-        "=========================",
-        _experience_block(),
-        "",
-        "=========================",
-        "MASTER PROJECT POOL (pick 3-5 most relevant by 'tags' and JD; or omit if none fit):",
-        "=========================",
-        _projects_block(),
-        "",
-        "=========================",
-        "MASTER SKILLS TREE (filter and reorder; do not add items not in this tree):",
-        "=========================",
-        _skills_block(),
-        "",
-        "Generate the tailored resume JSON now.",
-    ])
+            "=========================",
+            "MASTER PROJECT POOL (pick 3-5 most relevant by 'tags' and JD; or omit if none fit):",
+            "=========================",
+            _projects_block(),
+            "",
+            "=========================",
+            "MASTER SKILLS TREE (filter and reorder; do not add items not in this tree):",
+            "=========================",
+            _skills_block(),
+            "",
+            "Generate the tailored resume JSON now.",
+        ]
+    )
     return "\n".join(parts)
 
 

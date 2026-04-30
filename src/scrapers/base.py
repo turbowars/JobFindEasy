@@ -1,10 +1,11 @@
 """Base scraper with common helpers."""
+
 from __future__ import annotations
 
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Iterable
+from collections.abc import Iterable
 
 from ..models import Job
 
@@ -31,7 +32,14 @@ class BaseScraper(ABC):
         # Strip remaining tags
         html = re.sub(r"<[^>]+>", "", html)
         # Decode common entities
-        html = html.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&#39;", "'").replace("&quot;", '"')
+        html = (
+            html.replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&#39;", "'")
+            .replace("&quot;", '"')
+        )
         # Collapse whitespace
         html = re.sub(r"[ \t]+", " ", html)
         html = re.sub(r"\n{3,}", "\n\n", html)

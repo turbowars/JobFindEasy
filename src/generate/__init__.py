@@ -1,4 +1,5 @@
 """Resume and cover letter generation."""
+
 from __future__ import annotations
 
 import os
@@ -13,8 +14,7 @@ def mirror_to_public(src: Path) -> Path | None:
     Returns the destination path on success, or None if copy failed.
     """
     target_dir = Path(
-        os.environ.get("PUBLIC_EXPORT_DIR")
-        or (Path.home() / "Public" / "JobFindEasy")
+        os.environ.get("PUBLIC_EXPORT_DIR") or (Path.home() / "Public" / "JobFindEasy")
     ).expanduser()
     try:
         target_dir.mkdir(parents=True, exist_ok=True)

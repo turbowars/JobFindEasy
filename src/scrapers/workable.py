@@ -3,11 +3,12 @@
 Public widget endpoint: https://apply.workable.com/api/v1/widget/accounts/{slug}
 No auth. Returns all open jobs.
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from typing import Iterable
+from collections.abc import Iterable
 
 import httpx
 
@@ -27,7 +28,9 @@ class WorkableScraper(BaseScraper):
         self.timeout = timeout
 
     def scrape(self) -> Iterable[Job]:
-        with httpx.Client(timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.2"}) as client:
+        with httpx.Client(
+            timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.2"}
+        ) as client:
             for slug in self.slugs:
                 try:
                     yield from self._scrape_company(client, slug)
@@ -48,13 +51,21 @@ class WorkableScraper(BaseScraper):
 
     def _to_job(self, jd: dict, slug: str, company: str) -> Job:
         location = jd.get("location", {}) or {}
-        loc_str = ", ".join(filter(None, [location.get("city"), location.get("region"), location.get("country")]))
-        remote = bool(jd.get("remote") or jd.get("workplace") == "remote" or "remote" in loc_str.lower())
+        loc_str = ", ".join(
+            filter(None, [location.get("city"), location.get("region"), location.get("country")])
+        )
+        remote = bool(
+            jd.get("remote") or jd.get("workplace") == "remote" or "remote" in loc_str.lower()
+        )
 
         # Workable description is in jd['description'] or jd['full_description']
         description = self.clean_html(jd.get("description") or jd.get("full_description") or "")
 
-        url = jd.get("url") or jd.get("application_url") or f"https://apply.workable.com/{slug}/j/{jd.get('shortcode')}/"
+        url = (
+            jd.get("url")
+            or jd.get("application_url")
+            or f"https://apply.workable.com/{slug}/j/{jd.get('shortcode')}/"
+        )
 
         return Job(
             source=self.source,

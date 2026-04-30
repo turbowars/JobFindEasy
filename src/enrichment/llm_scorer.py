@@ -6,11 +6,11 @@ dheeraj-job-search.skill. Returns total + breakdown + 1-sentence rationale.
 We use Haiku because the rubric is well-specified and the JD is short.
 Sonnet would cost 10x for marginal quality gain.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
 
 from ..llm import chat
 
@@ -97,7 +97,9 @@ Return ONLY a single JSON object, no markdown fences, no commentary:
 }"""
 
 
-def score_job(client, model: str, title: str, company: str, location: str, description: str, sponsorship: str) -> Optional[dict]:
+def score_job(
+    client, model: str, title: str, company: str, location: str, description: str, sponsorship: str
+) -> dict | None:
     """Returns the parsed JSON dict from the model, or None on failure.
 
     `client` is unused (kept for call-site compatibility); routing goes through
@@ -118,7 +120,10 @@ JOB DESCRIPTION:
         # the provider pin overhead isn't worth it. Re-enable if the rubric
         # is ever expanded past 2048 tokens.
         text = chat(
-            system=SYSTEM_PROMPT, user=user_msg, model=model, max_tokens=600,
+            system=SYSTEM_PROMPT,
+            user=user_msg,
+            model=model,
+            max_tokens=600,
         )
     except Exception as e:
         log.warning("LLM scoring API error: %s", e)
@@ -139,7 +144,17 @@ JOB DESCRIPTION:
         return None
 
     # Validate
-    required = {"title_match", "skills_match", "leadership_scope", "domain_alignment", "location_fit", "comp_confidence", "total", "tier", "rationale"}
+    required = {
+        "title_match",
+        "skills_match",
+        "leadership_scope",
+        "domain_alignment",
+        "location_fit",
+        "comp_confidence",
+        "total",
+        "tier",
+        "rationale",
+    }
     if not required.issubset(parsed.keys()):
         log.warning("LLM scoring missing keys: %s", parsed.keys())
         return None

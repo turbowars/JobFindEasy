@@ -3,6 +3,7 @@
 Returns one of: "offered", "denied", "unknown".
 'denied' is hard-blocked downstream. 'offered' boosts score.
 """
+
 from __future__ import annotations
 
 import re

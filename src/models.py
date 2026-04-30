@@ -1,12 +1,11 @@
 """Canonical Job record shape used across scrapers, scoring, and UI."""
+
 from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Optional
-
 
 # Common job-title abbreviations that scrapers see differently across sources.
 # Normalized BEFORE hashing so "Sr. Engineer" and "Senior Engineer" produce the
@@ -56,30 +55,30 @@ def _normalize_for_hash(s: str) -> str:
 @dataclass
 class Job:
     # Identity
-    source: str                        # "greenhouse" | "lever" | "ashby" | "linkedin"
+    source: str  # "greenhouse" | "lever" | "ashby" | "linkedin"
     company: str
     title: str
     location: str
     url: str
 
     # Content
-    description: str = ""              # raw JD text
-    posted_at: Optional[str] = None    # ISO8601 string
-    salary_min: Optional[int] = None
-    salary_max: Optional[int] = None
-    remote: Optional[bool] = None
+    description: str = ""  # raw JD text
+    posted_at: str | None = None  # ISO8601 string
+    salary_min: int | None = None
+    salary_max: int | None = None
+    remote: bool | None = None
 
     # Enrichment (filled later)
     sponsorship_status: str = "unknown"  # "offered" | "denied" | "unknown"
     prefilter_passed: bool = False
     prefilter_reason: str = ""
-    score_total: Optional[int] = None    # 0-100
-    score_breakdown: str = ""            # JSON string of subscores
-    score_rationale: str = ""            # 1-2 sentence why
-    tier: str = ""                       # "strong" | "possible" | "stretch" | "skip"
+    score_total: int | None = None  # 0-100
+    score_breakdown: str = ""  # JSON string of subscores
+    score_rationale: str = ""  # 1-2 sentence why
+    tier: str = ""  # "strong" | "possible" | "stretch" | "skip"
 
     # Tracking
-    applied_at: Optional[str] = None
+    applied_at: str | None = None
     notes: str = ""
 
     # Bookkeeping
@@ -104,9 +103,8 @@ class Job:
             key = ("url|" + _normalize_url(self.url)).encode()
         else:
             key = "|".join(
-                _normalize_for_hash(part) for part in (
-                    self.source, self.company, self.title, self.location
-                )
+                _normalize_for_hash(part)
+                for part in (self.source, self.company, self.title, self.location)
             ).encode()
         return hashlib.sha256(key).hexdigest()[:16]
 

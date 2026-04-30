@@ -4,16 +4,17 @@ Each job has one of seven states. Transitions are unrestricted (the user
 is the sole authority for what state a job is in); the UI offers
 conveniences for the common forward path but allows arbitrary moves.
 """
+
 from __future__ import annotations
 
 STATUSES = (
-    "new",            # default — scraped, possibly scored, no action taken
-    "shortlisted",    # manually saved for later
-    "applying",       # apply flow in progress (form open)
-    "applied",        # form submitted
-    "interviewing",   # any active back-and-forth — recruiter, HM, panel
-    "offer",          # offer extended
-    "closed",         # terminal — see closed_reason
+    "new",  # default — scraped, possibly scored, no action taken
+    "shortlisted",  # manually saved for later
+    "applying",  # apply flow in progress (form open)
+    "applied",  # form submitted
+    "interviewing",  # any active back-and-forth — recruiter, HM, panel
+    "offer",  # offer extended
+    "closed",  # terminal — see closed_reason
 )
 
 CLOSED_REASONS = (

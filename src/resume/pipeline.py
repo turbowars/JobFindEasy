@@ -11,70 +11,102 @@ Pipeline:
 No retry loop. No track detection. No headline. Locked titles, locked
 companies, locked education. The LLM picks bullets and skills only.
 """
+
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
 import re
 from datetime import date, datetime
 from pathlib import Path
-from typing import Optional
 
-from ..llm import chat
 from ..enrichment.ats_match import extract_keywords, match_keywords
 from ..enrichment.hr_score import hr_simulate
 from ..generate import mirror_to_public
+from ..llm import chat
+from ..utils import OUTPUT_DIR, safe_filename_part, safe_loc_suffix, scrub_dashes
 from . import profile, prompts
-from .template import Resume, Experience, Project, SkillCategory, flatten_for_match
 from .docx_builder import build_docx
+from .template import Experience, Project, Resume, SkillCategory, flatten_for_match
 
 log = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-OUTPUT_DIR = PROJECT_ROOT / "data" / "exports"
-
-# `[—–]` -> ` - `; resume rules forbid em/en dashes outside dates, and the
-# date field comes from the locked profile so we can scrub everywhere else.
-_DASH = re.compile(r"\s*[—–]\s*")
+# Local alias kept for in-module readability; OUTPUT_DIR is the single source.
+_scrub = scrub_dashes
 
 
-def _scrub(s: str) -> str:
-    if not s:
-        return s
-    s = _DASH.sub(" - ", s)
-    return re.sub(r"  +", " ", s).strip()
+# Track detection from JD title. EM-positive matches return "em"; everything
+# else defaults to "ic" (Staff/Principal/Senior FE/Software Engineer/Tech Lead).
+_EM_TITLE_RE = re.compile(
+    r"\b("
+    r"engineering\s+manager|"
+    r"software\s+engineering\s+manager|"
+    r"frontend\s+engineering\s+manager|"
+    r"full\s*stack\s+engineering\s+manager|"
+    r"product\s+engineering\s+manager|"
+    r"web\s+platform\s+engineering\s+manager|"
+    r"growth\s+engineering\s+manager|"
+    r"director\s+of\s+engineering|"
+    r"vp\s+(of\s+)?engineering|"
+    r"vice\s+president,?\s+engineering|"
+    r"head\s+of\s+engineering|"
+    r"senior\s+engineering\s+manager|"
+    r"sr\.?\s+engineering\s+manager|"
+    r"\bem\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def detect_track(jd_title: str) -> str:
+    """Return 'em' for management titles, 'ic' otherwise.
+
+    Intentionally simple — one regex against the JD title. Hybrid roles
+    (Player-Coach / Staff EM) match the EM regex and route to EM, which is
+    safer because EM resumes carry leadership signals IC resumes lack.
+    """
+    return "em" if _EM_TITLE_RE.search(jd_title or "") else "ic"
+
+
+def _equifax_title_override(jd_title: str, track: str) -> str:
+    paren = "Engineering Lead" if track == "em" else "Tech Lead"
+    return f"{(jd_title or '').strip()} ({paren})"
 
 
 # ---------------------------------------------------------------------------
 # Build a Resume from LLM output + locked profile.
 # ---------------------------------------------------------------------------
 
-def _experience_from_llm(llm_exp: list[dict]) -> list[Experience]:
+
+def _experience_from_llm(llm_exp: list[dict], jd_title: str, track: str) -> list[Experience]:
     """For each role in profile.EXPERIENCE, attach the LLM-selected bullets.
 
-    Roles missing from the LLM response fall back to the first 3 bullets in
-    the pool — defensive default so a malformed response still produces a
-    coherent resume.
+    Equifax title is overridden per track: `[JD title] (Tech Lead)` for IC
+    or `[JD title] (Engineering Lead)` for EM. All other role titles are
+    locked from profile.EXPERIENCE. Roles missing from the LLM response
+    fall back to the first 3 bullets in the pool.
     """
     by_key = {e.get("key"): e for e in (llm_exp or []) if isinstance(e, dict)}
     out: list[Experience] = []
     for role in profile.EXPERIENCE:
         llm_role = by_key.get(role["key"]) or {}
-        bullets = [
-            _scrub(b) for b in (llm_role.get("bullets") or []) if b and b.strip()
-        ]
+        bullets = [_scrub(b) for b in (llm_role.get("bullets") or []) if b and b.strip()]
         if not bullets:
             bullets = [_scrub(b) for b in role["bullet_pool"][:3]]
-        out.append(Experience(
-            company=role["company"],
-            title=role["title"],
-            location=role["location"],
-            dates=role["dates"],
-            descriptor=role["descriptor"],
-            bullets=bullets,
-        ))
+        title = (
+            _equifax_title_override(jd_title, track) if role["key"] == "equifax" else role["title"]
+        )
+        out.append(
+            Experience(
+                company=role["company"],
+                title=title,
+                location=role["location"],
+                dates=role["dates"],
+                descriptor=role["descriptor"],
+                bullets=bullets,
+            )
+        )
     return out
 
 
@@ -124,7 +156,7 @@ def _skills_from_llm(llm_skills: list[dict]) -> list[SkillCategory]:
     master_by_label = {c["label"]: set(c["items"]) for c in profile.SKILLS_MASTER}
     primary: list[SkillCategory] = []
     tail: SkillCategory | None = None
-    for cat in (llm_skills or []):
+    for cat in llm_skills or []:
         if not isinstance(cat, dict):
             continue
         label = (cat.get("label") or "").strip()
@@ -144,24 +176,24 @@ def _skills_from_llm(llm_skills: list[dict]) -> list[SkillCategory]:
             continue  # unknown category - drop
         kept = [i for i in items if i in master_items]
         if kept:
-            primary.append(SkillCategory(
-                label=_scrub(label), items=[_scrub(i) for i in kept]
-            ))
+            primary.append(SkillCategory(label=_scrub(label), items=[_scrub(i) for i in kept]))
     if not primary and tail is None:
         return [
-            SkillCategory(label=c["label"], items=list(c["items"]))
-            for c in profile.SKILLS_MASTER
+            SkillCategory(label=c["label"], items=list(c["items"])) for c in profile.SKILLS_MASTER
         ]
     if tail is not None:
         primary.append(tail)
     return primary
 
 
-def _resume_from_llm(payload: dict) -> Resume:
+def _resume_from_llm(payload: dict, jd_title: str, track: str) -> Resume:
     summary = _scrub(payload.get("summary") or "")
-    highlights = [
-        _scrub(h) for h in (payload.get("highlights") or []) if h and h.strip()
-    ][:4]
+    # Highlights are EM-track only; IC resumes lead with Skills instead.
+    highlights = (
+        [_scrub(h) for h in (payload.get("highlights") or []) if h and h.strip()][:4]
+        if track == "em"
+        else []
+    )
     cert_pick = (payload.get("conditional_cert") or "cua").lower()
     if cert_pick not in profile.CERTIFICATIONS_CONDITIONAL:
         cert_pick = "cua"
@@ -174,11 +206,12 @@ def _resume_from_llm(payload: dict) -> Resume:
         contact_line=profile.CONTACT_LINE,
         summary=summary,
         highlights=highlights,
-        experiences=_experience_from_llm(payload.get("experience") or []),
+        experiences=_experience_from_llm(payload.get("experience") or [], jd_title, track),
         projects=_projects_from_llm(payload.get("projects") or []),
         education=list(profile.EDUCATION),
         certifications=certifications,
         skills=_skills_from_llm(payload.get("skills") or []),
+        track=track,
     )
 
 
@@ -186,22 +219,11 @@ def _resume_from_llm(payload: dict) -> Resume:
 # Filenames + daily cap
 # ---------------------------------------------------------------------------
 
-def _safe_loc_suffix(location: str) -> str:
-    if not location:
-        return ""
-    raw = re.sub(r"[^A-Za-z0-9]+", "_", location).strip("_")
-    if not raw:
-        return ""
-    if len(raw) <= 30:
-        return f"_{raw}"
-    digest = hashlib.md5(location.encode()).hexdigest()[:6]
-    return f"_{raw[:23]}_{digest}"
-
 
 def expected_resume_path(jd_title: str, jd_company: str, location: str = "") -> Path:
-    safe_t = re.sub(r"[^A-Za-z0-9]+", "_", jd_title).strip("_")
-    safe_c = re.sub(r"[^A-Za-z0-9]+", "_", jd_company).strip("_")
-    suffix = _safe_loc_suffix(location)
+    safe_t = safe_filename_part(jd_title)
+    safe_c = safe_filename_part(jd_company)
+    suffix = safe_loc_suffix(location)
     return OUTPUT_DIR / f"Dheeraj_Sampath_{safe_t}_{safe_c}{suffix}.docx"
 
 
@@ -268,8 +290,7 @@ def _build_retry_feedback(prev_pct: float, missing: dict) -> str:
     head = flat[:30]
     return (
         f"Previous attempt scored {prev_pct}%, target is 80%. These JD "
-        "keywords did not surface in the resume:\n"
-        + ", ".join(head) + ".\n\n"
+        "keywords did not surface in the resume:\n" + ", ".join(head) + ".\n\n"
         "For each missing keyword, decide:\n"
         "1. Can you weave it naturally into a bullet, highlight, or primary "
         "skill category? Do that, using the JD's exact spelling.\n"
@@ -286,11 +307,15 @@ def _generate_payload(
     jd_title: str,
     jd_company: str,
     jd_text: str,
+    track: str = "em",
     keywords: dict | None = None,
     retry_feedback: str = "",
 ) -> dict:
     user = prompts.build_user_message(
-        jd_title, jd_company, jd_text,
+        jd_title,
+        jd_company,
+        jd_text,
+        track=track,
         must_cover=keywords,
         retry_feedback=retry_feedback,
     )
@@ -304,7 +329,9 @@ def _generate_payload(
     return prompts.parse_response(raw)
 
 
-def _score(resume: Resume, keywords: dict, jd_title: str, jd_company: str, jd_text: str) -> tuple[dict, dict]:
+def _score(
+    resume: Resume, keywords: dict, jd_title: str, jd_company: str, jd_text: str
+) -> tuple[dict, dict]:
     resume_text = flatten_for_match(resume)
     match = match_keywords(resume_text, keywords)
     hr = hr_simulate(jd_title, jd_company, jd_text, resume_text)
@@ -315,7 +342,7 @@ def generate_resume(
     jd_title: str,
     jd_company: str,
     jd_text: str,
-    model: Optional[str] = None,
+    model: str | None = None,
     location: str = "",
 ) -> tuple[Path, dict]:
     """Generate a tailored resume and return (path, tailoring_report).
@@ -340,48 +367,67 @@ def generate_resume(
     # 2. First Sonnet call. Pass the extracted ATS keywords as must-cover so
     # the LLM works the exact terms the matcher will check for into skills /
     # bullets / highlights wherever the experience supports them.
-    payload = _generate_payload(model, jd_title, jd_company, jd_text, keywords=keywords)
-    resume = _resume_from_llm(payload)
+    track = detect_track(jd_title)
+    log.info("[track] %s for %s", track, cache_key)
+    payload = _generate_payload(
+        model, jd_title, jd_company, jd_text, track=track, keywords=keywords
+    )
+    resume = _resume_from_llm(payload, jd_title, track)
     match, hr = _score(resume, keywords, jd_title, jd_company, jd_text)
     log.info(
         "[scores] attempt=1 ats=%s hr=%s for %s",
-        match.get("match_pct"), hr.get("hr_score"), cache_key,
+        match.get("match_pct"),
+        hr.get("hr_score"),
+        cache_key,
     )
 
     # `attempts` records every Sonnet call so the sidecar shows whether retry
     # actually fired, regardless of which attempt was kept. `kept` flags the
     # one whose payload was rendered to .docx.
-    attempts = [{
-        "ats_pct": match.get("match_pct"),
-        "hr_score": hr.get("hr_score"),
-        "kept": True,
-    }]
+    attempts = [
+        {
+            "ats_pct": match.get("match_pct"),
+            "hr_score": hr.get("hr_score"),
+            "kept": True,
+        }
+    ]
 
     # 3. Retry once if ATS is low; keep whichever attempt scores higher.
     if (match.get("match_pct") or 0) < ATS_RETRY_THRESHOLD:
-        feedback = _build_retry_feedback(
-            match.get("match_pct") or 0, match.get("missing") or {}
+        feedback = _build_retry_feedback(match.get("match_pct") or 0, match.get("missing") or {})
+        log.info(
+            "[retry] regenerating once (ats=%s < %s); feedback: %s",
+            match.get("match_pct"),
+            ATS_RETRY_THRESHOLD,
+            feedback[:200],
         )
-        log.info("[retry] regenerating once (ats=%s < %s); feedback: %s",
-                 match.get("match_pct"), ATS_RETRY_THRESHOLD, feedback[:200])
         try:
             payload2 = _generate_payload(
-                model, jd_title, jd_company, jd_text,
-                keywords=keywords, retry_feedback=feedback,
+                model,
+                jd_title,
+                jd_company,
+                jd_text,
+                track=track,
+                keywords=keywords,
+                retry_feedback=feedback,
             )
-            resume2 = _resume_from_llm(payload2)
+            resume2 = _resume_from_llm(payload2, jd_title, track)
             match2, hr2 = _score(resume2, keywords, jd_title, jd_company, jd_text)
             log.info(
                 "[scores] attempt=2 ats=%s hr=%s for %s",
-                match2.get("match_pct"), hr2.get("hr_score"), cache_key,
+                match2.get("match_pct"),
+                hr2.get("hr_score"),
+                cache_key,
             )
             keep_retry = (match2.get("match_pct") or 0) > (match.get("match_pct") or 0)
             attempts[0]["kept"] = not keep_retry
-            attempts.append({
-                "ats_pct": match2.get("match_pct"),
-                "hr_score": hr2.get("hr_score"),
-                "kept": keep_retry,
-            })
+            attempts.append(
+                {
+                    "ats_pct": match2.get("match_pct"),
+                    "hr_score": hr2.get("hr_score"),
+                    "kept": keep_retry,
+                }
+            )
             if keep_retry:
                 payload, resume, match, hr = payload2, resume2, match2, hr2
         except Exception as e:
@@ -408,6 +454,7 @@ def generate_resume(
         "hr": hr,
         "keywords": keywords,
         "conditional_cert": payload.get("conditional_cert") or "cua",
+        "track": track,
         "attempts": attempts,
     }
     sidecar = output_path.with_suffix(".scores.json")
@@ -429,7 +476,7 @@ def generate_resume(
 
 def autogen_resume_if_missing(
     jd_title: str, jd_company: str, jd_text: str, location: str = ""
-) -> Optional[Path]:
+) -> Path | None:
     """Generate only if a resume for this title+company+location doesn't exist
     on disk. Respects the per-day cap. Safe to call from any thread.
     """
@@ -441,7 +488,10 @@ def autogen_resume_if_missing(
         cap = int(os.environ.get("AUTO_RESUME_CAP_PER_DAY", "20"))
         log.info(
             "daily resume cap reached (%d >= %d) -- skipping autogen for %s @ %s",
-            today_resume_count(), cap, jd_title, jd_company,
+            today_resume_count(),
+            cap,
+            jd_title,
+            jd_company,
         )
         return None
     try:
@@ -451,6 +501,9 @@ def autogen_resume_if_missing(
     except Exception as e:
         log.warning(
             "autogen resume failed for %s @ %s (%s): %s",
-            jd_title, jd_company, location, e,
+            jd_title,
+            jd_company,
+            location,
+            e,
         )
         return None

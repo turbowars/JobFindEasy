@@ -8,12 +8,13 @@ Strategy:
 
 These are founder-posted, no recruiter spam, and often pre-ATS.
 """
+
 from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 import httpx
 
@@ -38,7 +39,9 @@ class HackerNewsScraper(BaseScraper):
         self.max_comments = opts.get("max_comments", 500)
 
     def scrape(self) -> Iterable[Job]:
-        with httpx.Client(timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.2"}) as client:
+        with httpx.Client(
+            timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.2"}
+        ) as client:
             thread_id = self.thread_id or self._find_latest_thread(client)
             if not thread_id:
                 log.warning("hackernews: could not locate Who's Hiring thread")
@@ -97,7 +100,7 @@ class HackerNewsScraper(BaseScraper):
         posted_at = None
         if comment.get("time"):
             try:
-                posted_at = datetime.fromtimestamp(comment["time"], tz=timezone.utc).isoformat()
+                posted_at = datetime.fromtimestamp(comment["time"], tz=UTC).isoformat()
             except Exception:
                 pass
 

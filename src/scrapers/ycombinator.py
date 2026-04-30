@@ -5,10 +5,11 @@ company jobs. This is a backend API used by their own SPA — public but undocum
 
 We hit the public listing page and the per-company job feed.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 
 import httpx
 
@@ -52,7 +53,9 @@ class YCWorkAtStartupScraper(BaseScraper):
                 log.warning("ycombinator API call failed: %s — endpoint may have changed", e)
                 return
 
-            jobs_data = data if isinstance(data, list) else data.get("jobs", []) or data.get("results", [])
+            jobs_data = (
+                data if isinstance(data, list) else data.get("jobs", []) or data.get("results", [])
+            )
             for jd in jobs_data:
                 try:
                     yield self._to_job(jd)

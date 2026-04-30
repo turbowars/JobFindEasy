@@ -3,10 +3,11 @@
 Public JSON API: https://remotive.com/api/remote-jobs?category=software-dev
 No auth, very stable. Returns ~100-200 jobs across categories.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 
 import httpx
 
@@ -26,7 +27,9 @@ class RemotiveScraper(BaseScraper):
         self.timeout = opts.get("timeout", 30)
 
     def scrape(self) -> Iterable[Job]:
-        with httpx.Client(timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.2"}) as client:
+        with httpx.Client(
+            timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.2"}
+        ) as client:
             for cat in self.categories:
                 try:
                     yield from self._scrape_category(client, cat)

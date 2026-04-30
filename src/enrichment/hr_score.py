@@ -7,12 +7,11 @@ technically hit all the keywords but read like buzzword soup.
 Borrowed conceptually from jananthan30/Resume-Builder (MIT) — implemented
 here as a single Haiku call instead of vendoring their 130KB scoring module.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import os
-from typing import Optional
 
 from ..llm import chat
 
@@ -44,10 +43,12 @@ def hr_simulate(
     jd_company: str,
     jd_text: str,
     resume_text: str,
-    model: Optional[str] = None,
+    model: str | None = None,
 ) -> dict:
     """Returns {hr_score, rationale, weakest_areas} or {} on failure."""
-    model = model or os.environ.get("SCORING_MODEL", "anthropic/claude-haiku-4.5")
+    from ..llm import get_model
+
+    model = model or get_model("hr_sim")
     # Resume text was previously truncated at 8000 chars — too tight for a
     # 14-year resume with 7+ roles. The HR scorer was complaining the resume
     # "cuts off mid-sentence at final role" because of this. 32000 chars

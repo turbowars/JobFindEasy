@@ -10,14 +10,13 @@ Two stages:
 
 Borrowed conceptually from srbhr/Resume-Matcher (Apache-2.0).
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from functools import lru_cache
-from typing import Optional
 
 from rapidfuzz import fuzz, utils
 
@@ -54,9 +53,7 @@ def _extract_cached(jd_cache_key: str, jd_text: str, model: str) -> str:
     )
 
 
-def extract_keywords(
-    jd_text: str, jd_cache_key: str, model: Optional[str] = None
-) -> dict:
+def extract_keywords(jd_text: str, jd_cache_key: str, model: str | None = None) -> dict:
     """Returns {required: [], preferred: [], soft: []}.
 
     Tries the API up to twice — keyword extraction is the foundation of the
@@ -68,8 +65,10 @@ def extract_keywords(
     """
     if not jd_text or not jd_text.strip():
         return _empty()
-    model = model or os.environ.get("SCORING_MODEL", "anthropic/claude-haiku-4.5")
-    last_err: Optional[str] = None
+    from ..llm import get_model
+
+    model = model or get_model("ats_extract")
+    last_err: str | None = None
     for attempt in (1, 2):
         try:
             raw = _extract_cached(jd_cache_key, jd_text, model)
@@ -89,7 +88,9 @@ def extract_keywords(
             last_err = f"json decode: {e}"
             log.warning(
                 "ats keyword extract attempt %d JSON decode failed: %s | text=%s",
-                attempt, e, text[:200],
+                attempt,
+                e,
+                text[:200],
             )
             continue
         return {
@@ -101,9 +102,7 @@ def extract_keywords(
     return _empty()
 
 
-def match_keywords(
-    resume_text: str, keywords: dict, fuzz_threshold: int = 85
-) -> dict:
+def match_keywords(resume_text: str, keywords: dict, fuzz_threshold: int = 85) -> dict:
     """rapidfuzz partial_ratio per keyword, weighted by tier.
 
     Returns:
@@ -139,6 +138,7 @@ def match_keywords(
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
 
 def _empty() -> dict:
     return {"required": [], "preferred": [], "soft": []}

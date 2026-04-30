@@ -8,6 +8,7 @@ Public API:
   today_resume_count() -> int
   daily_cap_reached() -> bool
 """
+
 from .pipeline import (
     autogen_resume_if_missing,
     daily_cap_reached,

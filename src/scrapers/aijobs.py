@@ -2,10 +2,11 @@
 
 The RSS endpoint is https://aijobs.net/feed/
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 
 import feedparser
 
@@ -53,7 +54,9 @@ class AIJobsScraper(BaseScraper):
         location = ""
         for tag in entry.get("tags", []):
             term = tag.get("term") or ""
-            if any(loc in term.lower() for loc in ("remote", "us", "usa", "united states", "europe")):
+            if any(
+                loc in term.lower() for loc in ("remote", "us", "usa", "united states", "europe")
+            ):
                 location = term
                 break
 

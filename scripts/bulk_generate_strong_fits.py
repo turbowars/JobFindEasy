@@ -2,6 +2,7 @@
 already have one on disk. Runs sequentially in 3 worker threads — same cap
 as the Streamlit UI executor — so you can keep using the app while it runs.
 """
+
 from __future__ import annotations
 
 import logging
@@ -13,7 +14,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
 
@@ -21,7 +23,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src import db
-from src.resume import generate_resume, existing_resume_path
+from src.resume import existing_resume_path, generate_resume
 
 MAX_WORKERS = 3
 
@@ -35,7 +37,8 @@ def _gen(job: dict) -> dict:
         path, report = generate_resume(title, company, desc, location=location)
         scores = report.get("scores", {}) if report else {}
         return {
-            "title": title, "company": company,
+            "title": title,
+            "company": company,
             "ok": True,
             "path": path.name,
             "ats": scores.get("ats_match", {}).get("match_pct"),

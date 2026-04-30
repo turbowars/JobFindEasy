@@ -1,10 +1,11 @@
 """SQLite persistence layer with idempotent upsert and pandas export."""
+
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable, Optional
 
 import pandas as pd
 
@@ -149,9 +150,10 @@ def _migrate_url_hash(c: sqlite3.Connection) -> None:
     if cur.fetchone():
         return
 
-    from collections import defaultdict
     import hashlib
+    from collections import defaultdict
     from datetime import datetime
+
     from .models import _normalize_for_hash, _normalize_url
 
     def _new_hash(url, source, company, title, location) -> str:
@@ -183,16 +185,12 @@ def _migrate_url_hash(c: sqlite3.Connection) -> None:
             if old_h != new_h:
                 # Defensive: don't crash if a row already sits at new_h
                 # (shouldn't happen given the grouping, but cheap to check).
-                exists = c.execute(
-                    "SELECT 1 FROM jobs WHERE hash = ?", (new_h,)
-                ).fetchone()
+                exists = c.execute("SELECT 1 FROM jobs WHERE hash = ?", (new_h,)).fetchone()
                 if exists:
                     c.execute("DELETE FROM jobs WHERE hash = ?", (old_h,))
                     deleted += 1
                 else:
-                    c.execute(
-                        "UPDATE jobs SET hash = ? WHERE hash = ?", (new_h, old_h)
-                    )
+                    c.execute("UPDATE jobs SET hash = ? WHERE hash = ?", (new_h, old_h))
                     rehashed += 1
             continue
 
@@ -246,13 +244,27 @@ WHERE excluded.scraped_at >= jobs.scraped_at
 
 def _row_tuple(j: Job) -> tuple:
     return (
-        j.hash, j.source, j.company, j.title, j.location, j.url,
-        j.description, j.posted_at, j.salary_min, j.salary_max,
+        j.hash,
+        j.source,
+        j.company,
+        j.title,
+        j.location,
+        j.url,
+        j.description,
+        j.posted_at,
+        j.salary_min,
+        j.salary_max,
         int(j.remote) if j.remote is not None else None,
-        j.sponsorship_status, int(j.prefilter_passed),
-        j.prefilter_reason, j.score_total, j.score_breakdown,
-        j.score_rationale, j.tier,
-        j.applied_at, j.notes, j.scraped_at,
+        j.sponsorship_status,
+        int(j.prefilter_passed),
+        j.prefilter_reason,
+        j.score_total,
+        j.score_breakdown,
+        j.score_rationale,
+        j.tier,
+        j.applied_at,
+        j.notes,
+        j.scraped_at,
     )
 
 
@@ -266,9 +278,7 @@ def upsert_job(job: Job) -> bool:
     updated (or left unchanged because the incoming `scraped_at` was older).
     """
     with conn() as c:
-        existed = c.execute(
-            "SELECT 1 FROM jobs WHERE hash = ?", (job.hash,)
-        ).fetchone() is not None
+        existed = c.execute("SELECT 1 FROM jobs WHERE hash = ?", (job.hash,)).fetchone() is not None
         c.execute(_UPSERT_SQL, _row_tuple(job))
         return not existed
 
@@ -348,14 +358,13 @@ def record_score_failure(job_hash: str) -> int:
 def get_unfiltered() -> list[dict]:
     """Jobs that haven't been pre-filtered yet."""
     with conn() as c:
-        cur = c.execute(
-            "SELECT * FROM jobs WHERE prefilter_passed = 0 AND prefilter_reason = ''"
-        )
+        cur = c.execute("SELECT * FROM jobs WHERE prefilter_passed = 0 AND prefilter_reason = ''")
         return [dict(r) for r in cur.fetchall()]
 
 
 def update_score(job_hash: str, total: int, breakdown: str, rationale: str, tier: str) -> None:
     from datetime import datetime
+
     with conn() as c:
         c.execute(
             "UPDATE jobs SET score_total=?, score_breakdown=?, score_rationale=?, tier=?, scored_at=?, score_fail_count=0 WHERE hash=?",
@@ -374,7 +383,7 @@ def update_prefilter(job_hash: str, passed: bool, reason: str, sponsorship: str)
 def set_status(
     job_hash: str,
     status: str,
-    closed_reason: Optional[str] = None,
+    closed_reason: str | None = None,
 ) -> None:
     """Transition a job to a new status.
 
@@ -384,7 +393,9 @@ def set_status(
     Clears `closed_reason` automatically when status != 'closed'.
     """
     from datetime import datetime
-    from .status import is_valid_status, is_valid_closed_reason
+
+    from .status import is_valid_closed_reason, is_valid_status
+
     if not is_valid_status(status):
         raise ValueError(f"invalid status: {status!r}")
     if closed_reason is not None and not is_valid_closed_reason(closed_reason):
@@ -420,6 +431,7 @@ def sweep_ghosted(days: int) -> int:
     closed_reason='ghosted'. Returns the number of rows updated.
     """
     from datetime import datetime, timedelta
+
     cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
     now = datetime.utcnow().isoformat()
     with conn() as c:
@@ -444,6 +456,7 @@ def get_strong_fits_today(min_score: int = 80) -> list[dict]:
     """For the daily notification — strong fits from the last 24h that
     haven't been touched yet (status='new' or 'shortlisted')."""
     from datetime import datetime, timedelta
+
     cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
     with conn() as c:
         cur = c.execute(
@@ -457,10 +470,12 @@ def get_strong_fits_today(min_score: int = 80) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
-def to_dataframe(filters: Optional[dict] = None) -> pd.DataFrame:
+def to_dataframe(filters: dict | None = None) -> pd.DataFrame:
     """Read entire jobs table as a pandas DataFrame for the UI."""
     with conn() as c:
-        df = pd.read_sql_query("SELECT * FROM jobs ORDER BY score_total DESC NULLS LAST, scraped_at DESC", c)
+        df = pd.read_sql_query(
+            "SELECT * FROM jobs ORDER BY score_total DESC NULLS LAST, scraped_at DESC", c
+        )
     if filters:
         for k, v in filters.items():
             if v is not None and k in df.columns:
@@ -468,7 +483,7 @@ def to_dataframe(filters: Optional[dict] = None) -> pd.DataFrame:
     return df
 
 
-def get_job(job_hash: str) -> Optional[dict]:
+def get_job(job_hash: str) -> dict | None:
     with conn() as c:
         cur = c.execute("SELECT * FROM jobs WHERE hash = ?", (job_hash,))
         row = cur.fetchone()
@@ -485,11 +500,13 @@ def get_job(job_hash: str) -> Optional[dict]:
 # sources are stale, rather than re-fetching everything from scratch.
 # ---------------------------------------------------------------------------
 
+
 def get_recently_scraped_keys(within_minutes: int) -> set[str]:
     """Return source_keys scraped within the last N minutes."""
     if within_minutes is None or within_minutes <= 0:
         return set()
     from datetime import datetime, timedelta
+
     cutoff = (datetime.utcnow() - timedelta(minutes=within_minutes)).isoformat()
     with conn() as c:
         cur = c.execute(
@@ -502,6 +519,7 @@ def get_recently_scraped_keys(within_minutes: int) -> set[str]:
 def mark_scraped(source_keys: Iterable[str]) -> None:
     """Mark one or many source_keys as scraped 'now'."""
     from datetime import datetime
+
     keys = [k for k in source_keys if k]
     if not keys:
         return

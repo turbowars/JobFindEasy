@@ -4,6 +4,7 @@ The pipeline merges LOCKED facts from profile.py with LLM-generated content
 (summary, highlights, per-role bullets, skills selection, conditional cert)
 into one of these `Resume` instances. The docx_builder is the only consumer.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -17,11 +18,11 @@ class SkillCategory:
 
 @dataclass
 class Experience:
-    company: str        # locked
-    title: str          # locked
-    location: str       # locked
-    dates: str          # locked
-    descriptor: str = ""    # locked one-liner about scope (italic in .docx)
+    company: str  # locked
+    title: str  # locked
+    location: str  # locked
+    dates: str  # locked
+    descriptor: str = ""  # locked one-liner about scope (italic in .docx)
     bullets: list[str] = field(default_factory=list)  # selected from pool
 
 
@@ -35,13 +36,14 @@ class Project:
 class Resume:
     name: str
     contact_line: str
-    summary: str                       # 3-4 sentences, no I-140 line
-    highlights: list[str]              # 4 bullets, JD-tailored, metric-heavy
+    summary: str  # 3-4 sentences, no sponsorship content
+    highlights: list[str]  # EM track only; empty list for IC
     experiences: list[Experience]
-    projects: list[Project]            # 3-5 selected by LLM per JD; may be empty
-    education: list[str]               # locked
-    certifications: list[str]          # always-include + one conditional
-    skills: list[SkillCategory]        # filtered + reordered tree
+    projects: list[Project]  # 3-5 selected by LLM per JD; may be empty
+    education: list[str]  # locked
+    certifications: list[str]  # always-include + one conditional
+    skills: list[SkillCategory]  # filtered + reordered tree
+    track: str = "em"  # "ic" or "em" — drives section order
 
 
 def flatten_for_match(resume: Resume) -> str:

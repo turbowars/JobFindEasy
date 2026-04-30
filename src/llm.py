@@ -15,6 +15,7 @@ Minimum cacheable prompt size:
   - Haiku:       2048 tokens
 Below those, Anthropic silently does not cache; the call still succeeds.
 """
+
 from __future__ import annotations
 
 import logging
@@ -25,6 +26,27 @@ import httpx
 log = logging.getLogger(__name__)
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+
+# Default model used by every "scoring-class" task when no per-role override
+# is set. Per-role env vars are checked first, then SCORING_MODEL, then this.
+_SCORING_DEFAULT = "anthropic/claude-haiku-4.5"
+
+
+def get_model(role: str) -> str:
+    """Resolve which model to use for a given task role.
+
+    Resolution order:
+      1. Role-specific env var: `<ROLE>_MODEL` (e.g. `JOB_SCORING_MODEL`,
+         `ATS_EXTRACT_MODEL`, `HR_SIM_MODEL`, `URL_EXTRACT_MODEL`).
+      2. Shared `SCORING_MODEL` env var (legacy fallback so existing setups
+         keep working when the per-role var is unset).
+      3. Built-in default (`anthropic/claude-haiku-4.5`).
+
+    Generation (resume / cover letter) does NOT route through here — it has
+    its own `GENERATION_MODEL` resolved at the call site.
+    """
+    var_name = f"{role.upper()}_MODEL"
+    return os.environ.get(var_name) or os.environ.get("SCORING_MODEL") or _SCORING_DEFAULT
 
 
 def chat(
@@ -56,6 +78,10 @@ def chat(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
+        # OpenRouter uses these headers to label the calling app in its
+        # dashboard and analytics. Without them, calls show up as "Unknown".
+        "HTTP-Referer": "http://127.0.0.1:8826",
+        "X-Title": "JobFindEasy",
     }
 
     if cache_system:
@@ -84,9 +110,7 @@ def chat(
     if cache_system:
         payload["provider"] = {"order": ["Anthropic"], "allow_fallbacks": True}
     with httpx.Client(timeout=timeout) as client:
-        r = client.post(
-            f"{OPENROUTER_BASE}/chat/completions", headers=headers, json=payload
-        )
+        r = client.post(f"{OPENROUTER_BASE}/chat/completions", headers=headers, json=payload)
         r.raise_for_status()
         data = r.json()
 

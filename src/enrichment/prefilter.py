@@ -13,6 +13,7 @@ A job fails if ANY of:
   - Title is unrelated (Recruiter, Sales Engineer, Designer, Data Scientist)
   - Sponsorship is denied
 """
+
 from __future__ import annotations
 
 import re
@@ -60,9 +61,17 @@ TITLE_BAD = re.compile(
 # Signals in the JD that the role matches Dheeraj's profile
 PROFILE_SIGNALS = [
     re.compile(r"\b(react|typescript|javascript)\b", re.IGNORECASE),
-    re.compile(r"\b(micro[\s\-]?front[\s\-]?end|module\s+federation|frontend\s+platform)\b", re.IGNORECASE),
-    re.compile(r"\b(manage|managing|management|lead|leading|leadership)\b.*\b(team|engineers|reports)\b", re.IGNORECASE),
-    re.compile(r"\b(ci/cd|developer\s+tooling|developer\s+experience|dx|internal\s+platform)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(micro[\s\-]?front[\s\-]?end|module\s+federation|frontend\s+platform)\b", re.IGNORECASE
+    ),
+    re.compile(
+        r"\b(manage|managing|management|lead|leading|leadership)\b.*\b(team|engineers|reports)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(ci/cd|developer\s+tooling|developer\s+experience|dx|internal\s+platform)\b",
+        re.IGNORECASE,
+    ),
 ]
 
 

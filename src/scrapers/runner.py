@@ -15,13 +15,13 @@ that was scraped recently. After a scraper succeeds, its source_keys are
 marked. Consecutive scrape cycles thus continue with whichever sources are
 stale instead of re-fetching everything.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Iterable
 
 import yaml
 
@@ -94,7 +94,8 @@ async def run_all(config: dict | None = None) -> list[Job]:
     if fresh_keys:
         log.info(
             "skip-recent: %d source_key(s) within %dmin window, will be skipped",
-            len(fresh_keys), skip_minutes,
+            len(fresh_keys),
+            skip_minutes,
         )
     scrapers = build_scrapers(config, fresh_keys=fresh_keys)
     if not scrapers:
@@ -105,9 +106,7 @@ async def run_all(config: dict | None = None) -> list[Job]:
     loop = asyncio.get_running_loop()
     pool = ThreadPoolExecutor(max_workers=concurrency)
 
-    async def _one(
-        label: str, scraper, source_keys: list[str]
-    ) -> tuple[str, list[Job], list[str]]:
+    async def _one(label: str, scraper, source_keys: list[str]) -> tuple[str, list[Job], list[str]]:
         async with sem:
             try:
                 jobs = await loop.run_in_executor(pool, lambda: list(scraper.scrape()))
@@ -125,9 +124,7 @@ async def run_all(config: dict | None = None) -> list[Job]:
                 log.warning("[%s] FAILED: %s", label, e)
                 return label, [], []  # don't mark on failure → retry next cycle
 
-    results = await asyncio.gather(
-        *(_one(label, s, keys) for label, s, keys in scrapers)
-    )
+    results = await asyncio.gather(*(_one(label, s, keys) for label, s, keys in scrapers))
     pool.shutdown(wait=False)
 
     flat: list[Job] = []

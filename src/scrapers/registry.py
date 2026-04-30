@@ -6,20 +6,21 @@ To add a new source type:
   2. Add it to the SCRAPERS dict below.
   3. Add entries in config/sources.yaml.
 """
+
 from __future__ import annotations
 
-from .greenhouse import GreenhouseScraper
-from .lever import LeverScraper
+from .aijobs import AIJobsScraper
 from .ashby import AshbyScraper
-from .smartrecruiters import SmartRecruitersScraper
-from .workable import WorkableScraper
+from .greenhouse import GreenhouseScraper
+from .hackernews import HackerNewsScraper
+from .jobspresso import JobspressoScraper
+from .lever import LeverScraper
 from .recruitee import RecruiteeScraper
 from .remotive import RemotiveScraper
-from .aijobs import AIJobsScraper
+from .smartrecruiters import SmartRecruitersScraper
+from .workable import WorkableScraper
 from .working_nomads import WorkingNomadsScraper
-from .hackernews import HackerNewsScraper
 from .ycombinator import YCWorkAtStartupScraper
-from .jobspresso import JobspressoScraper
 
 # Slug-based scrapers: take a list of company slugs
 ATS_SCRAPERS = {

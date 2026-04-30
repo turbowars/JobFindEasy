@@ -4,23 +4,21 @@ Produces a 3-paragraph cover letter following the writing style rules from
 the dheeraj-job-search skill: no em dashes, no en dashes in prose, direct
 voice, numbers and named tools.
 """
+
 from __future__ import annotations
 
 import logging
 import os
-import re
 from pathlib import Path
-from typing import Optional
 
 from docx import Document
-from docx.shared import Pt, Inches
+from docx.shared import Inches, Pt
 
 from ..llm import chat
+from ..utils import OUTPUT_DIR, safe_filename_part, scrub_dashes
 from . import mirror_to_public
 
 log = logging.getLogger(__name__)
-
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "data" / "exports"
 
 SYSTEM = """You are writing a cover letter for Dheeraj Sampath, an Engineering Manager based in Austin, TX with 14+ years of frontend engineering and engineering leadership experience.
 
@@ -50,19 +48,15 @@ OUTPUT
 Return ONLY the cover letter text. No greeting line, no signature, no JSON, no markdown. Just three paragraphs separated by blank lines."""
 
 
-def _scrub(s: str) -> str:
-    if not s:
-        return s
-    return s.replace("—", ". ").replace("–", "-")
-
-
 def expected_cover_letter_path(jd_title: str, jd_company: str) -> Path:
-    safe_t = re.sub(r"[^A-Za-z0-9]+", "_", jd_title).strip("_")
-    safe_c = re.sub(r"[^A-Za-z0-9]+", "_", jd_company).strip("_")
+    safe_t = safe_filename_part(jd_title)
+    safe_c = safe_filename_part(jd_company)
     return OUTPUT_DIR / f"CoverLetter_Dheeraj_Sampath_{safe_t}_{safe_c}.docx"
 
 
-def generate_cover_letter(jd_title: str, jd_company: str, jd_text: str, model: Optional[str] = None) -> tuple[Path, str]:
+def generate_cover_letter(
+    jd_title: str, jd_company: str, jd_text: str, model: str | None = None
+) -> tuple[Path, str]:
     model = model or os.environ.get("GENERATION_MODEL", "anthropic/claude-sonnet-4.5")
 
     user = f"""TARGET TITLE: {jd_title}
@@ -74,11 +68,12 @@ JOB DESCRIPTION:
 Write the cover letter now."""
 
     text = chat(system=SYSTEM, user=user, model=model, max_tokens=1500).strip()
-    text = _scrub(text)
+    text = scrub_dashes(text)
 
     # Build .docx — match the resume's Arial / minimal-sleek treatment so the
     # two artifacts feel like a coordinated set.
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+
     doc = Document()
     for section in doc.sections:
         section.top_margin = Inches(0.8)

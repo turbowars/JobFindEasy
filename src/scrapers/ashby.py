@@ -3,11 +3,12 @@
 Endpoint: https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true
 No auth required.
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from typing import Iterable
+from collections.abc import Iterable
 
 import httpx
 
@@ -27,7 +28,9 @@ class AshbyScraper(BaseScraper):
         self.timeout = timeout
 
     def scrape(self) -> Iterable[Job]:
-        with httpx.Client(timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.1"}) as client:
+        with httpx.Client(
+            timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.1"}
+        ) as client:
             for slug in self.slugs:
                 try:
                     yield from self._scrape_company(client, slug)
@@ -88,7 +91,9 @@ class AshbyScraper(BaseScraper):
             for c in cs:
                 if c.get("compensationType") == "Salary":
                     try:
-                        return int(c.get("minValue") or 0) or None, int(c.get("maxValue") or 0) or None
+                        return int(c.get("minValue") or 0) or None, int(
+                            c.get("maxValue") or 0
+                        ) or None
                     except Exception:
                         pass
         return None, None

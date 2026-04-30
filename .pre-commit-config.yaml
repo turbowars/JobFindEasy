@@ -1,0 +1,36 @@
+# Pre-commit hooks. Install once with:
+#   .venv/bin/pre-commit install
+# Then every `git commit` runs these checks against staged files.
+#
+# Hooks are intentionally fast (<1s combined for typical commits). Slow checks
+# like the full pytest suite belong in CI, not pre-commit.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$  # markdown trailing-2-space hard breaks are intentional
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  # Run only the smoke tests on commit. Full pytest goes in CI.
+  - repo: local
+    hooks:
+      - id: pytest-smoke
+        name: pytest (smoke)
+        entry: .venv/bin/pytest tests/ -q --no-header
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]

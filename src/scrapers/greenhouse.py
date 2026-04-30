@@ -3,11 +3,12 @@
 Uses the public Boards API: https://developers.greenhouse.io/job-board.html
 No auth required, no rate limits beyond reasonable use.
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from typing import Iterable
+from collections.abc import Iterable
 
 import httpx
 
@@ -27,7 +28,9 @@ class GreenhouseScraper(BaseScraper):
         self.timeout = timeout
 
     def scrape(self) -> Iterable[Job]:
-        with httpx.Client(timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.1"}) as client:
+        with httpx.Client(
+            timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.1"}
+        ) as client:
             for slug in self.slugs:
                 try:
                     yield from self._scrape_company(client, slug)

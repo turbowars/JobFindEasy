@@ -3,11 +3,12 @@
 Public API: https://api.smartrecruiters.com/v1/companies/{slug}/postings
 No auth. Returns paginated postings with separate detail endpoint for full JD.
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from typing import Iterable
+from collections.abc import Iterable
 
 import httpx
 
@@ -29,7 +30,9 @@ class SmartRecruitersScraper(BaseScraper):
         self.fetch_descriptions = fetch_descriptions
 
     def scrape(self) -> Iterable[Job]:
-        with httpx.Client(timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.2"}) as client:
+        with httpx.Client(
+            timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.2"}
+        ) as client:
             for slug in self.slugs:
                 try:
                     yield from self._scrape_company(client, slug)
@@ -42,7 +45,9 @@ class SmartRecruitersScraper(BaseScraper):
         offset = 0
         page_size = 100
         while True:
-            r = client.get(LIST_API.format(slug=slug), params={"offset": offset, "limit": page_size})
+            r = client.get(
+                LIST_API.format(slug=slug), params={"offset": offset, "limit": page_size}
+            )
             if r.status_code == 404:
                 log.info("smartrecruiters: %s not found", slug)
                 return
@@ -78,7 +83,12 @@ class SmartRecruitersScraper(BaseScraper):
                 d = client.get(DETAIL_API.format(slug=slug, posting_id=pid)).json()
                 sections = d.get("jobAd", {}).get("sections", {}) or {}
                 parts = []
-                for key in ("companyDescription", "jobDescription", "qualifications", "additionalInformation"):
+                for key in (
+                    "companyDescription",
+                    "jobDescription",
+                    "qualifications",
+                    "additionalInformation",
+                ):
                     section = sections.get(key) or {}
                     if section.get("text"):
                         parts.append(self.clean_html(section["text"]))
@@ -91,7 +101,11 @@ class SmartRecruitersScraper(BaseScraper):
             company=company_display,
             title=jd.get("name", "").strip(),
             location=location or "Not specified",
-            url=(jd.get("ref") or "").replace("api.", "jobs.").replace("/v1/companies", "").replace("/postings/", "/" + slug + "/jobs/") or f"https://jobs.smartrecruiters.com/{slug}/{jd.get('id')}",
+            url=(jd.get("ref") or "")
+            .replace("api.", "jobs.")
+            .replace("/v1/companies", "")
+            .replace("/postings/", "/" + slug + "/jobs/")
+            or f"https://jobs.smartrecruiters.com/{slug}/{jd.get('id')}",
             description=description,
             posted_at=jd.get("releasedDate"),
             remote=remote,

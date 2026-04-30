@@ -3,11 +3,12 @@
 Public endpoint: https://{slug}.recruitee.com/api/offers/
 No auth. Returns all open offers as JSON.
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from typing import Iterable
+from collections.abc import Iterable
 
 import httpx
 
@@ -27,7 +28,9 @@ class RecruiteeScraper(BaseScraper):
         self.timeout = timeout
 
     def scrape(self) -> Iterable[Job]:
-        with httpx.Client(timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.2"}) as client:
+        with httpx.Client(
+            timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.2"}
+        ) as client:
             for slug in self.slugs:
                 try:
                     yield from self._scrape_company(client, slug)
@@ -43,7 +46,9 @@ class RecruiteeScraper(BaseScraper):
         r.raise_for_status()
         data = r.json()
         offers = data.get("offers", [])
-        company_display = (offers[0].get("company_name") if offers else None) or slug.replace("-", " ").title()
+        company_display = (offers[0].get("company_name") if offers else None) or slug.replace(
+            "-", " "
+        ).title()
         for jd in offers:
             yield self._to_job(jd, slug, company_display)
 
@@ -52,10 +57,18 @@ class RecruiteeScraper(BaseScraper):
         location = ", ".join(p for p in loc_parts if p)
         remote = bool(jd.get("remote") or "remote" in location.lower())
 
-        description = self.clean_html(jd.get("description") or "") + "\n\n" + self.clean_html(jd.get("requirements") or "")
+        description = (
+            self.clean_html(jd.get("description") or "")
+            + "\n\n"
+            + self.clean_html(jd.get("requirements") or "")
+        )
         description = description.strip()
 
-        url = jd.get("careers_url") or jd.get("url") or f"https://{slug}.recruitee.com/o/{jd.get('slug')}"
+        url = (
+            jd.get("careers_url")
+            or jd.get("url")
+            or f"https://{slug}.recruitee.com/o/{jd.get('slug')}"
+        )
 
         return Job(
             source=self.source,

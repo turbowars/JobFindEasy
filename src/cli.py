@@ -9,6 +9,7 @@ Usage:
   python -m src.cli notify          # send daily strong-fit notification
   python -m src.cli stats           # quick summary of DB
 """
+
 from __future__ import annotations
 
 import json
@@ -29,11 +30,11 @@ logging.basicConfig(
 )
 
 from . import db
+from .enrichment.llm_scorer import compute_tier, make_client, score_job
 from .enrichment.prefilter import prefilter as run_prefilter
-from .enrichment.llm_scorer import score_job, make_client, compute_tier
-from .scrapers.runner import run_all_sync
 from .notify import notify_strong_fits as do_notify
 from .resume import autogen_resume_if_missing
+from .scrapers.runner import run_all_sync
 
 console = Console()
 
@@ -60,7 +61,9 @@ def scrape():
         console.print("[yellow]no jobs returned[/]")
         return
     new, updated = db.upsert_many(jobs)
-    console.print(f"[green]scraped {len(jobs)} jobs[/]: [bold]{new} new[/], {updated} updated (existing)")
+    console.print(
+        f"[green]scraped {len(jobs)} jobs[/]: [bold]{new} new[/], {updated} updated (existing)"
+    )
 
 
 @cli.command(name="prefilter")
@@ -86,8 +89,10 @@ def score(limit: int):
         console.print("[yellow]nothing to score[/]")
         return
 
+    from .llm import get_model
+
     client = make_client()
-    model = os.environ.get("SCORING_MODEL", "anthropic/claude-haiku-4.5")
+    model = get_model("job_scoring")
     console.print(f"[cyan]scoring {len(pending)} jobs with {model}...[/]")
 
     auto_resume_cap = int(os.environ.get("AUTO_RESUME_CAP_PER_CYCLE", "5"))
@@ -95,27 +100,44 @@ def score(limit: int):
     auto_resumes = 0
     for j in pending:
         result = score_job(
-            client, model,
-            title=j["title"], company=j["company"], location=j["location"],
-            description=j["description"] or "", sponsorship=j["sponsorship_status"],
+            client,
+            model,
+            title=j["title"],
+            company=j["company"],
+            location=j["location"],
+            description=j["description"] or "",
+            sponsorship=j["sponsorship_status"],
         )
         if not result:
             n = db.record_score_failure(j["hash"])
             if n >= 3:
-                console.print(f"[yellow]dead-letter[/]: {j['title'][:40]} @ {j['company']} (failed {n}x)")
+                console.print(
+                    f"[yellow]dead-letter[/]: {j['title'][:40]} @ {j['company']} (failed {n}x)"
+                )
             continue
         total = int(result.get("total", 0))
         tier = result.get("tier") or compute_tier(total)
-        breakdown = json.dumps({
-            k: result.get(k) for k in
-            ["title_match", "skills_match", "leadership_scope", "domain_alignment", "location_fit", "comp_confidence"]
-        })
+        breakdown = json.dumps(
+            {
+                k: result.get(k)
+                for k in [
+                    "title_match",
+                    "skills_match",
+                    "leadership_scope",
+                    "domain_alignment",
+                    "location_fit",
+                    "comp_confidence",
+                ]
+            }
+        )
         rationale = result.get("rationale", "")
         db.update_score(j["hash"], total, breakdown, rationale, tier)
         scored += 1
         if tier == "strong" and total >= 80 and auto_resumes < auto_resume_cap:
             path = autogen_resume_if_missing(
-                j["title"], j["company"], j["description"] or "",
+                j["title"],
+                j["company"],
+                j["description"] or "",
                 location=j.get("location") or "",
             )
             if path:
@@ -163,7 +185,9 @@ def stats():
     table.add_row("Prefilter passed", str(int(df["prefilter_passed"].sum())))
     table.add_row("Scored", str(int(df["score_total"].notna().sum())))
     table.add_row("Strong fits (80+)", str(int((df["score_total"] >= 80).sum())))
-    table.add_row("Possible (60-79)", str(int(((df["score_total"] >= 60) & (df["score_total"] < 80)).sum())))
+    table.add_row(
+        "Possible (60-79)", str(int(((df["score_total"] >= 60) & (df["score_total"] < 80)).sum()))
+    )
     table.add_row("Sponsorship denied", str(int((df["sponsorship_status"] == "denied").sum())))
     for s in ("shortlisted", "applying", "applied", "interviewing", "offer", "closed"):
         n = int((df["status"] == s).sum())
@@ -183,8 +207,11 @@ def stats():
         t2.add_column("Source")
         for _, row in top.iterrows():
             t2.add_row(
-                str(int(row["score_total"])), str(row["tier"]),
-                str(row["title"])[:50], str(row["company"])[:30], str(row["source"]),
+                str(int(row["score_total"])),
+                str(row["tier"]),
+                str(row["title"])[:50],
+                str(row["company"])[:30],
+                str(row["source"]),
             )
         console.print(t2)
 

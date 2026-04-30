@@ -2,10 +2,11 @@
 
 Endpoint pattern: https://www.workingnomads.com/jobsrss?category={cat}
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 
 import feedparser
 

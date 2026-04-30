@@ -15,6 +15,18 @@ dependencies = [
     "click>=8.1.7",
     "mammoth>=1.8.0",
     "rapidfuzz>=3.6.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.7.0",
+    "mypy>=1.11.0",
+    "pre-commit>=3.7.0",
 ]
 
 [project.scripts]
@@ -27,3 +39,66 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
+
+
+# -----------------------------------------------------------------------------
+# Tooling
+# -----------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    ".venv",
+    "data",
+    "config/skills",
+    "job_intelligence_agent.egg-info",
+]
+
+[tool.ruff.lint]
+# Sensible default ruleset. Pyflakes (F) catches dead imports + undefined names,
+# pycodestyle (E, W) is style, isort (I) sorts imports, bugbear (B) catches
+# real bugs, pyupgrade (UP) keeps the codebase modern.
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",  # line length is enforced by `line-length`; pycodestyle's E501 is noisy
+    "B008",  # FastAPI's `Depends(...)` in default args is idiomatic
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/__init__.py" = ["F401"]            # re-exports
+"src/resume/__init__.py" = ["F401"]     # public API re-exports
+"tests/*" = ["F401", "F811"]            # test fixtures
+# load_dotenv() and logging.basicConfig() must run BEFORE the `src.*` imports
+# so the .env file is resolvable and child loggers inherit the root format.
+# This is the canonical pattern for entry-point modules.
+"web/app.py" = ["E402"]
+"src/cli.py" = ["E402"]
+"scripts/*.py" = ["E402"]               # standalone scripts that load_dotenv before src imports
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-q --tb=short"
+
+[tool.mypy]
+# Gradual typing. The lean `src/resume/` module is the strict-typing reference;
+# other modules opt in over time.
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = "src.resume.*"
+strict = true
+
+[[tool.mypy.overrides]]
+# Third-party libs without inline stubs.
+module = ["mammoth.*", "feedparser.*", "rapidfuzz.*", "docx.*"]
+ignore_missing_imports = true

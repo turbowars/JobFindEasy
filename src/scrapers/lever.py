@@ -3,12 +3,13 @@
 Uses: https://api.lever.co/v0/postings/{company}?mode=json
 No auth required.
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 import httpx
 
@@ -28,7 +29,9 @@ class LeverScraper(BaseScraper):
         self.timeout = timeout
 
     def scrape(self) -> Iterable[Job]:
-        with httpx.Client(timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.1"}) as client:
+        with httpx.Client(
+            timeout=self.timeout, headers={"User-Agent": "JobIntelAgent/0.1"}
+        ) as client:
             for slug in self.slugs:
                 try:
                     yield from self._scrape_company(client, slug)
@@ -53,7 +56,6 @@ class LeverScraper(BaseScraper):
             location = ", ".join(all_locations[:3])
 
         commitment = categories.get("commitment", "")
-        team = categories.get("team", "")
 
         # Lever returns descriptionPlain and lists. Stitch them.
         parts = [jd.get("descriptionPlain", "") or ""]
@@ -69,7 +71,7 @@ class LeverScraper(BaseScraper):
         posted_at = None
         if jd.get("createdAt"):
             try:
-                posted_at = datetime.fromtimestamp(jd["createdAt"] / 1000, tz=timezone.utc).isoformat()
+                posted_at = datetime.fromtimestamp(jd["createdAt"] / 1000, tz=UTC).isoformat()
             except Exception:
                 pass
 

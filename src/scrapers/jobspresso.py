@@ -4,12 +4,13 @@ Endpoint: https://jobspresso.co/jobs/feed/
 Curated remote-tech postings. The `author` field encodes "Company<br>⚲ Location",
 the `title` is the role only.
 """
+
 from __future__ import annotations
 
 import html
 import logging
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 import feedparser
 

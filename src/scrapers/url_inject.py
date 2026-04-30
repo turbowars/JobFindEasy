@@ -8,14 +8,13 @@ The user pastes a link (any ATS, careers page, LinkedIn, etc.) and we:
 
 Returning a Job lets the caller run the normal prefilter/score path on it.
 """
+
 from __future__ import annotations
 
 import html as html_mod
 import json
 import logging
-import os
 import re
-from typing import Optional
 
 import httpx
 
@@ -38,12 +37,13 @@ _WORKDAY_RE = re.compile(
 )
 
 
-def _maybe_workday_api_url(url: str) -> Optional[str]:
+def _maybe_workday_api_url(url: str) -> str | None:
     m = _WORKDAY_RE.match(url)
     if not m:
         return None
     base, tenant, site, job_path = m.group(1), m.group(2), m.group(3), m.group(4)
     return f"{base}/wday/cxs/{tenant}/{site}/job/{job_path}"
+
 
 _EXTRACT_SYSTEM = """You are extracting structured fields from a job posting page.
 
@@ -77,7 +77,7 @@ def _strip_html(html: str) -> str:
     return "\n".join(ln for ln in lines if ln).strip()
 
 
-def _coerce_int(v) -> Optional[int]:
+def _coerce_int(v) -> int | None:
     if isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
@@ -85,7 +85,7 @@ def _coerce_int(v) -> Optional[int]:
     return None
 
 
-def inject_from_url(url: str, model: Optional[str] = None) -> tuple[Optional[Job], str]:
+def inject_from_url(url: str, model: str | None = None) -> tuple[Job | None, str]:
     """Fetch URL, extract a Job via Haiku.
 
     Returns (Job, "ok") on success, (None, error_msg) on failure.
@@ -105,8 +105,8 @@ def inject_from_url(url: str, model: Optional[str] = None) -> tuple[Optional[Job
             follow_redirects=True,
             headers={
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                              "AppleWebKit/537.36 (KHTML, like Gecko) "
-                              "Chrome/124.0.0.0 Safari/537.36",
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36",
                 "Accept": accept,
                 "Accept-Language": "en-US,en;q=0.9",
             },
@@ -124,7 +124,9 @@ def inject_from_url(url: str, model: Optional[str] = None) -> tuple[Optional[Job
     if len(text) < 200:
         return None, "page contained too little text — likely a login wall or JS-rendered page"
 
-    model = model or os.environ.get("SCORING_MODEL", "anthropic/claude-haiku-4.5")
+    from ..llm import get_model
+
+    model = model or get_model("url_extract")
     user_msg = f"URL: {url}\n\nPAGE TEXT:\n{text}\n\nReturn the JSON now."
     try:
         raw = chat(system=_EXTRACT_SYSTEM, user=user_msg, model=model, max_tokens=2000)
