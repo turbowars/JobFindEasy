@@ -64,7 +64,7 @@ linkedin.com/in/evolvingdx  |  dheerajsampath.com  |  github.com/turbowars
 
 ---
 
-#### Nowfloats Technologies Pvt Ltd · Principal Engineer · Hyderabad, India · Mar 2017 – Feb 2018
+#### nowfloats · Principal Engineer · Hyderabad, India · Mar 2017 – Feb 2018
 
 - Everything on the role header line: **[LOCKED]**
 - Bullets: **[GENERATED]** — 2 to 3 (Engineering) or 1 (Management).
