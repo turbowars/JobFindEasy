@@ -89,7 +89,7 @@ Same filter as company_hook. Generic admiration is empty string.
 - Skip rather than pad. If a hook or closing line would feel like filler, leave it out (return empty string).
 - No em dashes (—). No en dashes (–) in prose. Use commas, periods, semicolons, colons, parentheses, or hyphens with spaces.
 - No sponsorship / visa / I-140 / AC21 / H-1B references. Cover letters are the wrong surface; the recruiter screen handles that.
-- No "free sample" offers (no "happy to do a 30-minute audit", no "I can prepare a deck"). At senior levels this reads junior. The locked sign-off "Resume attached. ... Happy to find time for a call" is the correct close — don't replicate that energy elsewhere.
+- No "free sample" offers (no "happy to do a 30-minute audit", no "I can prepare a deck"). At senior levels this reads junior. The locked sign-off "More at dheerajsampath.com and linkedin.com/in/evolvingdx. Happy to find time for a call" is the correct close — don't replicate that energy elsewhere.
 """
 
 
@@ -165,7 +165,7 @@ Same filter as company_hook. Generic admiration is empty string.
 - Skip rather than pad. If a hook or closing line would feel like filler, leave it out (return empty string).
 - No em dashes (—). No en dashes (–) in prose. Use commas, periods, semicolons, colons, parentheses, or hyphens with spaces.
 - No sponsorship / visa / I-140 / AC21 / H-1B references. Cover letters are the wrong surface; the recruiter screen handles that.
-- No "free sample" offers (no "happy to do a 30-minute audit", no "I can prepare a deck"). At senior levels this reads junior. The locked sign-off "Resume attached. ... Happy to find time for a call" is the correct close — don't replicate that energy elsewhere.
+- No "free sample" offers (no "happy to do a 30-minute audit", no "I can prepare a deck"). At senior levels this reads junior. The locked sign-off "More at dheerajsampath.com and linkedin.com/in/evolvingdx. Happy to find time for a call" is the correct close — don't replicate that energy elsewhere.
 """
 
 

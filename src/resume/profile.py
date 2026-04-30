@@ -115,8 +115,7 @@ COVER_LETTER_BULLETS_LEAD = (
 )
 
 COVER_LETTER_SIGNOFF = (
-    "Resume attached. More at dheerajsampath.com and "
-    "linkedin.com/in/evolvingdx. Happy to find time for a call."
+    "More at dheerajsampath.com and linkedin.com/in/evolvingdx. Happy to find time for a call."
 )
 
 COVER_LETTER_CLOSING = "Thanks,\nDheeraj Sampath"
