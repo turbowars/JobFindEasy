@@ -805,6 +805,16 @@ def api_jobs_json(show_rejects: bool = False):
         na_position="last",
     )
 
+    # One filesystem scan instead of per-row Path.exists() probes — the grid
+    # renders has_resume/has_cover_letter for every visible row, and we need
+    # to scale to ~500 rows without N filesystem syscalls. The set lookup
+    # below is O(1) per row.
+    from src.utils import OUTPUT_DIR as _EXPORTS_DIR
+
+    on_disk: set[str] = set()
+    if _EXPORTS_DIR.exists():
+        on_disk = {p.name for p in _EXPORTS_DIR.iterdir() if p.suffix == ".docx"}
+
     def _clean(v):
         # pandas turns NULL text columns into float NaN; json.dumps rejects them.
         if v is None:
@@ -816,6 +826,25 @@ def api_jobs_json(show_rejects: bool = False):
     out = []
     for r in df.to_dict(orient="records"):
         score = r.get("score_total")
+        # Compute expected filenames; check membership in the on-disk set.
+        # Uses expected_resume_path (canonical), then falls back to the
+        # legacy no-location-suffix variant — same fallback chain as
+        # existing_resume_path. OSError on pathological titles → no match.
+        try:
+            canonical_r = expected_resume_path(
+                r.get("title") or "", r.get("company") or "", r.get("location") or ""
+            ).name
+            legacy_r = expected_resume_path(r.get("title") or "", r.get("company") or "", "").name
+            has_resume = canonical_r in on_disk or legacy_r in on_disk
+        except OSError:
+            has_resume = False
+        try:
+            cover_name = expected_cover_letter_path(
+                r.get("title") or "", r.get("company") or ""
+            ).name
+            has_cover_letter = cover_name in on_disk
+        except OSError:
+            has_cover_letter = False
         out.append(
             {
                 "hash": r["hash"],
@@ -834,6 +863,8 @@ def api_jobs_json(show_rejects: bool = False):
                 "status_at": _clean(r.get("status_at")),
                 "closed_reason": _clean(r.get("closed_reason")),
                 "url": r.get("url") or "",
+                "has_resume": has_resume,
+                "has_cover_letter": has_cover_letter,
             }
         )
     return JSONResponse(out)

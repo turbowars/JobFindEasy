@@ -57,6 +57,35 @@
               title="Open posting (marks job as applying)">Do IT↗</a>`;
   }
 
+  // Per-row Generate / Regenerate button. Two states:
+  //   - missing → accent button "+ Gen"   (POST /actions/generate/<kind>/<hash>)
+  //   - present → muted    "✓"            (POST /actions/regenerate/<kind>/<hash>)
+  // The grid auto-refreshes when the server fires `jia-generations-changed`
+  // (wired below in the gridOptions block) so the cell flips state once the
+  // .docx lands on disk. Clicks stopPropagation so the row-click → detail
+  // pane doesn't fire alongside.
+  function _genCellRenderer(kind, hasFlag, label) {
+    return function (params) {
+      const has = !!(params.data && params.data[hasFlag]);
+      const hash = (params.data && params.data.hash) || "";
+      if (!hash) return "";
+      const route = has ? "regenerate" : "generate";
+      const tooltip = has
+        ? `${label} generated · click to regenerate`
+        : `Generate ${label.toLowerCase()} for this job`;
+      const cls = has
+        ? "text-ink-3 hover:text-accent"
+        : "text-accent hover:underline font-medium";
+      const text = has ? "✓ Regen" : "+ Gen";
+      const onclick = `event.stopPropagation(); window.jia_generateArtifact && window.jia_generateArtifact('${hash}', '${kind}', '${route}', this)`;
+      return `<button class="text-[11px] ${cls}"
+                      onclick="${onclick}"
+                      title="${tooltip}">${text}</button>`;
+    };
+  }
+  const resumeGenCellRenderer = _genCellRenderer("resume", "has_resume", "Resume");
+  const coverGenCellRenderer = _genCellRenderer("cover", "has_cover_letter", "Cover");
+
   function copyableCellRenderer(params) {
     const v = (params.value || "").replace(/"/g, "&quot;");
     if (!v) return "";
@@ -198,6 +227,29 @@
       sortable: false,
       filter: false,
       cellRenderer: urlCellRenderer,
+      cellClass: "text-center",
+    },
+    {
+      // Per-row resume generate/regenerate button. The action endpoints
+      // already exist (/actions/generate/resume/<hash> and
+      // /actions/regenerate/resume/<hash>); this column just surfaces
+      // them inline so the user doesn't have to open the detail pane
+      // for every job.
+      field: "has_resume",
+      headerName: "Resume",
+      width: 90,
+      sortable: true,
+      filter: "agTextColumnFilter",
+      cellRenderer: resumeGenCellRenderer,
+      cellClass: "text-center",
+    },
+    {
+      field: "has_cover_letter",
+      headerName: "Cover",
+      width: 90,
+      sortable: true,
+      filter: "agTextColumnFilter",
+      cellRenderer: coverGenCellRenderer,
       cellClass: "text-center",
     },
     {

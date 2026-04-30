@@ -1975,3 +1975,104 @@ def test_cover_letter_sidecar_why_composition(tmp_path, hook, fit, expected):
     cover_pipeline._write_sidecar(letter, tmp_path / "x.docx")
     payload = json.loads((tmp_path / "x.json").read_text())
     assert payload["why_this_company"] == expected
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# /api/jobs.json — has_resume / has_cover_letter booleans drive the grid's
+# per-row Generate / Regenerate buttons. If these stop being computed, every
+# row shows "+ Gen" and the user can't tell what's already done.
+# ────────────────────────────────────────────────────────────────────────────
+def test_jobs_json_includes_resume_and_cover_flags(monkeypatch, tmp_path):
+    """Each row in /api/jobs.json carries has_resume / has_cover_letter
+    booleans computed by membership-checking expected filenames against
+    the contents of OUTPUT_DIR. Pin: both fields exist; one row with the
+    files on disk reads True, one row without reads False."""
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from src import utils as utils_module
+    from src.cover_letter import expected_cover_letter_path
+    from src.cover_letter import pipeline as cover_pipeline
+    from src.resume import expected_resume_path
+    from src.resume import pipeline as resume_pipeline
+    from web import app as web_app
+
+    # Redirect OUTPUT_DIR to a temp dir we control. The endpoint imports
+    # OUTPUT_DIR lazily inside the function so monkeypatching utils
+    # alone is enough — but we also patch the resume + cover modules
+    # because their helpers use the symbol they imported.
+    monkeypatch.setattr(utils_module, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(resume_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cover_pipeline, "OUTPUT_DIR", tmp_path)
+
+    df = pd.DataFrame(
+        [
+            {
+                "hash": "with-files",
+                "source": "greenhouse",
+                "company": "Acme",
+                "title": "Engineering Manager",
+                "location": "Remote",
+                "url": "u1",
+                "description": "x",
+                "posted_at": "2026-04-20",
+                "salary_min": None,
+                "salary_max": None,
+                "remote": 1,
+                "sponsorship_status": "unknown",
+                "prefilter_passed": 1,
+                "prefilter_reason": "",
+                "score_total": 95.0,
+                "score_breakdown": "{}",
+                "score_rationale": "",
+                "tier": "strong",
+                "status": "shortlisted",
+                "status_at": None,
+                "closed_reason": None,
+                "applied_at": None,
+                "notes": "",
+                "scraped_at": "2026-04-20T00:00:00",
+            },
+            {
+                "hash": "no-files",
+                "source": "greenhouse",
+                "company": "Beacon",
+                "title": "Staff Frontend Engineer",
+                "location": "",
+                "url": "u2",
+                "description": "x",
+                "posted_at": "2026-04-20",
+                "salary_min": None,
+                "salary_max": None,
+                "remote": 1,
+                "sponsorship_status": "unknown",
+                "prefilter_passed": 1,
+                "prefilter_reason": "",
+                "score_total": 80.0,
+                "score_breakdown": "{}",
+                "score_rationale": "",
+                "tier": "strong",
+                "status": "new",
+                "status_at": None,
+                "closed_reason": None,
+                "applied_at": None,
+                "notes": "",
+                "scraped_at": "2026-04-20T00:00:00",
+            },
+        ]
+    )
+    monkeypatch.setattr(db_module, "to_dataframe", lambda: df)
+
+    # Write the expected files for the first row only.
+    expected_resume_path("Engineering Manager", "Acme", "Remote").write_bytes(b"x")
+    expected_cover_letter_path("Engineering Manager", "Acme").write_bytes(b"x")
+
+    client = TestClient(web_app.app)
+    r = client.get("/api/jobs.json")
+    assert r.status_code == 200
+    rows = {row["hash"]: row for row in r.json()}
+
+    assert rows["with-files"]["has_resume"] is True
+    assert rows["with-files"]["has_cover_letter"] is True
+    assert rows["no-files"]["has_resume"] is False
+    assert rows["no-files"]["has_cover_letter"] is False

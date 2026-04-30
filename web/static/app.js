@@ -718,6 +718,43 @@ async function markApplying(hash) {
 }
 window.jia_markApplying = markApplying;
 
+// Per-row generate-or-regenerate handler. Called from the inline buttons
+// in the grid's Resume / Cover columns (see _genCellRenderer in grid.js).
+// Optimistically swaps the button label to "..." so the user sees instant
+// feedback; the grid re-fetches data on `jia-generations-changed` (fired
+// by the action endpoints) once the worker actually finishes the .docx.
+async function generateArtifact(hash, kind, route, btn) {
+  if (!hash || !kind) return;
+  const original = btn ? btn.textContent : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "...";
+  }
+  try {
+    const r = await fetch(`/actions/${route}/${kind}/${hash}`, { method: "POST" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    flashMessage(`▶ ${kind} queued`);
+  } catch (err) {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+    flashMessage(`generate failed: ${err.message}`);
+  }
+}
+window.jia_generateArtifact = generateArtifact;
+
+// When any generation queues / completes, the action endpoints fire
+// `jia-generations-changed` via the HX-Trigger header. Pick that up and
+// refresh the grid so the Resume / Cover cells flip from "+ Gen" to
+// "✓ Regen" once the .docx lands. The generations tray already polls;
+// this is the additional grid-level subscription.
+document.body.addEventListener("jia-generations-changed", () => {
+  if (typeof window.jia_refreshGrid === "function") {
+    window.jia_refreshGrid();
+  }
+});
+
 // Generic status transition called from the AG Grid status chip's overlay
 // <select>. `value` is either a plain status ("new", "applying", ...) or
 // a flattened "closed:<reason>" combo. The server validates the transition
