@@ -11,7 +11,9 @@ If you find yourself reaching for `Path(__file__).parent.parent.parent` or
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import shutil
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -85,3 +87,28 @@ def safe_loc_suffix(location: str) -> str:
         return f"_{raw}"
     digest = hashlib.md5(location.encode()).hexdigest()[:_LOC_HASH_LEN]
     return f"_{raw[: _LOC_SUFFIX_MAX - _LOC_HASH_LEN - 1]}_{digest}"
+
+
+# ---------------------------------------------------------------------------
+# Public-folder mirror — used by both resume and cover-letter pipelines so the
+# generated .docx + .scores.json sidecar are accessible outside the repo.
+# ---------------------------------------------------------------------------
+
+
+def mirror_to_public(src_path: Path) -> Path | None:
+    """Copy a generated artifact to the user's public folder.
+
+    Target dir is `$PUBLIC_EXPORT_DIR` if set, else `~/Public/JobFindEasy`.
+    Returns the destination path on success, or None if the copy failed
+    (best-effort — generation is the primary action; mirroring is bonus).
+    """
+    target_dir = Path(
+        os.environ.get("PUBLIC_EXPORT_DIR") or (Path.home() / "Public" / "JobFindEasy")
+    ).expanduser()
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        dest = target_dir / src_path.name
+        shutil.copy2(src_path, dest)
+        return dest
+    except Exception:
+        return None

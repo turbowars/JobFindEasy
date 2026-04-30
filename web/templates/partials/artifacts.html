@@ -21,6 +21,16 @@
 
 <div class="text-[10px] uppercase tracking-[0.1em] text-ink-3 mt-3 mb-2 border-t border-base-300/40 pt-3">Generated artifacts</div>
 
+{# Bundle download — surfaces when BOTH artifacts exist so the user can grab
+   them in one click instead of two. Returns a .zip from /files/bundle/{hash}. #}
+{% if resume_path and cover_path %}
+<div class="mb-3">
+  <sl-button variant="default" size="small" href="/files/bundle/{{ job.hash }}">
+    📦 Download both (.zip)
+  </sl-button>
+</div>
+{% endif %}
+
 {# ───── Resume ───── #}
 {% if resume_path %}
   {% set ats = (scores or {}).get('ats_match') or {} %}
@@ -37,8 +47,16 @@
     </summary>
     <div class="space-y-3 mt-2">
 
-      <div class="flex flex-wrap gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <sl-button variant="primary" size="small" href="/files/resume/{{ job.hash }}">Download .docx</sl-button>
+        {% if resume_html %}
+          <sl-button variant="text" size="small"
+                     data-action="copy-preview"
+                     data-preview-target="resume-preview-{{ job.hash }}"
+                     title="Copy resume text to clipboard">
+            ⎘ Copy text
+          </sl-button>
+        {% endif %}
         <sl-button variant="text" size="small"
                    hx-post="/actions/regenerate/resume/{{ job.hash }}"
                    hx-swap="none"
@@ -49,7 +67,8 @@
 
       {% if resume_html %}
         <div class="rounded border border-base-300/40 bg-base-200/20">
-          <div class="jia-prose p-3 text-xs leading-relaxed max-h-[500px] overflow-y-auto text-ink-2">
+          <div id="resume-preview-{{ job.hash }}"
+               class="jia-prose p-3 text-xs leading-relaxed max-h-[500px] overflow-y-auto text-ink-2">
             {{ resume_html | safe }}
           </div>
         </div>
@@ -91,8 +110,39 @@
             {% endif %}
           </div>
         </div>
-        {% if scores.get('retried') %}
-          <div class="text-[10px] text-ink-3 text-center">Auto-retried once due to low initial scores.</div>
+
+        {# ───── Refine with feedback ─────
+           Surfaced when EITHER score is below 80 — that's where feedback-driven
+           refinement has headroom to lift the combined score. Server-side
+           refine_resume() only overwrites the .docx + sidecar if the new
+           combined ATS+HR exceeds the prior, so clicking is always safe. #}
+        {% set can_refine = (ats_pct < 80) or (hr_pct < 80) %}
+        {% if can_refine %}
+          <div class="flex items-center justify-center gap-2 pt-2 border-t border-base-300/30">
+            <sl-button size="small" variant="default"
+                       hx-post="/actions/refine-resume/{{ job.hash }}"
+                       hx-swap="none"
+                       hx-on::after-request="htmx.ajax('GET', '/partials/artifacts/{{ job.hash }}', {target: '#artifacts-{{ job.hash }}', swap: 'outerHTML'})">
+              ↻ Refine with feedback
+            </sl-button>
+            <span class="text-[10px] text-ink-3">
+              {%- set lows = [] -%}
+              {%- if ats_pct < 80 -%}{%- set _ = lows.append('ATS ' ~ ats_pct ~ '%') -%}{%- endif -%}
+              {%- if hr_pct  < 80 -%}{%- set _ = lows.append('HR ' ~ hr_pct) -%}{%- endif -%}
+              {{ lows | join(' · ') }} below 80 — feeds missing keywords + weak areas back to Sonnet
+            </span>
+          </div>
+        {% endif %}
+
+        {% if scores.get('attempts') %}
+          {% set attempt_count = scores.attempts | length %}
+          {% if attempt_count > 1 %}
+            <div class="text-[10px] text-ink-3 text-center">
+              {{ attempt_count }} attempts recorded
+              {%- set refinements = scores.attempts | selectattr('refinement') | list | length -%}
+              {%- if refinements -%} ({{ refinements }} user-triggered refinement{{ 's' if refinements > 1 else '' }}){%- endif -%}
+            </div>
+          {% endif %}
         {% endif %}
       {% endif %}
     </div>
@@ -107,16 +157,26 @@
   </div>
 {% endif %}
 
-{# ───── Cover letter ───── #}
+{# ───── Cover letter ─────
+   `open` matches the resume section so polling-driven outerHTML swaps don't
+   collapse user-visible content during a resume regeneration. #}
 {% if cover_path %}
-  <details class="border-l-2 border-base-300/40 pl-3 py-1 mb-3">
+  <details class="border-l-2 border-base-300/40 pl-3 py-1 mb-3" open>
     <summary class="text-sm font-medium cursor-pointer select-none">
       Cover letter
       <span class="text-[11px] text-ink-3 font-normal ml-1">{{ fmt_size(cover_path) }} · {{ fmt_age(cover_path) }}</span>
     </summary>
     <div class="space-y-3 mt-2">
-      <div class="flex flex-wrap gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <sl-button variant="primary" size="small" href="/files/cover/{{ job.hash }}">Download .docx</sl-button>
+        {% if cover_html %}
+          <sl-button variant="text" size="small"
+                     data-action="copy-preview"
+                     data-preview-target="cover-preview-{{ job.hash }}"
+                     title="Copy cover letter text to clipboard">
+            ⎘ Copy text
+          </sl-button>
+        {% endif %}
         <sl-button variant="text" size="small"
                    hx-post="/actions/regenerate/cover/{{ job.hash }}"
                    hx-swap="none"
@@ -126,7 +186,8 @@
       </div>
       {% if cover_html %}
         <div class="rounded border border-base-300/40 bg-base-200/20">
-          <div class="jia-prose p-3 text-xs leading-relaxed max-h-[500px] overflow-y-auto text-ink-2">
+          <div id="cover-preview-{{ job.hash }}"
+               class="jia-prose p-3 text-xs leading-relaxed max-h-[500px] overflow-y-auto text-ink-2">
             {{ cover_html | safe }}
           </div>
         </div>

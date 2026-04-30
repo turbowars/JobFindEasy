@@ -135,6 +135,7 @@ _STATUS_PRIORITY = {
     "shortlisted": 3,
     "new": 2,
     "closed": 1,
+    "not_interested": 0,  # never engaged; lowest priority on conflict
 }
 
 

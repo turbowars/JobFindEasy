@@ -75,6 +75,8 @@
   // (3-color palette discipline).
   const STATUS_GLYPHS = {
     new: "○",
+    not_interested: "⊘",
+    no_sponsorship: "∅",
     shortlisted: "★",
     applying: "▶",
     applied: "✓",
@@ -84,6 +86,8 @@
   };
   const STATUS_LABELS = {
     new: "New",
+    not_interested: "Not Interested",
+    no_sponsorship: "No Sponsorship",
     shortlisted: "Shortlisted",
     applying: "Applying",
     applied: "Applied",
@@ -98,12 +102,14 @@
   // native picker. Closed states are flattened to "Closed (reason)" so
   // the user picks status + reason in one action.
   const STATUS_OPTIONS = [
-    { value: "new",          label: "○ New" },
-    { value: "shortlisted",  label: "★ Shortlisted" },
-    { value: "applying",     label: "▶ Applying" },
-    { value: "applied",      label: "✓ Applied" },
-    { value: "interviewing", label: "⟳ Interviewing" },
-    { value: "offer",        label: "◆ Offer" },
+    { value: "new",            label: "○ New" },
+    { value: "not_interested", label: "⊘ Not Interested" },
+    { value: "no_sponsorship", label: "∅ No Sponsorship" },
+    { value: "shortlisted",    label: "★ Shortlisted" },
+    { value: "applying",       label: "▶ Applying" },
+    { value: "applied",        label: "✓ Applied" },
+    { value: "interviewing",   label: "⟳ Interviewing" },
+    { value: "offer",          label: "◆ Offer" },
     { value: "closed:rejected",          label: "— Closed (rejected)" },
     { value: "closed:withdrew",          label: "— Closed (withdrew)" },
     { value: "closed:ghosted",           label: "— Closed (ghosted)" },
@@ -161,15 +167,6 @@
 
   const columnDefs = [
     {
-      field: "url",
-      headerName: "Apply",
-      width: 80,
-      sortable: false,
-      filter: false,
-      cellRenderer: urlCellRenderer,
-      cellClass: "text-center",
-    },
-    {
       field: "score",
       headerName: "Score",
       width: 130,
@@ -181,8 +178,20 @@
       field: "tier",
       headerName: "Tier",
       width: 110,
-      filter: "agSetColumnFilter", // falls back to text in Community; that's fine
+      filter: "agTextColumnFilter",
       cellRenderer: tierCellRenderer,
+    },
+    {
+      // "Apply" sits before Title so the action button lands closer to
+      // the cursor's natural rest position after a Tier glance — the
+      // user reaches the apply link without crossing the long title cell.
+      field: "url",
+      headerName: "Apply",
+      width: 80,
+      sortable: false,
+      filter: false,
+      cellRenderer: urlCellRenderer,
+      cellClass: "text-center",
     },
     {
       field: "title",
@@ -218,21 +227,38 @@
       cellClass: "text-ink-3 text-xs tabular-nums",
     },
     {
+      // Source column is hidden by default — low signal once you've seen
+      // a few rows. Toggle visible via the column-menu funnel if needed
+      // (right-click any column header → Choose columns).
       field: "source",
       headerName: "Source",
       width: 110,
       filter: "agTextColumnFilter",
       cellClass: "text-ink-3 text-xs",
+      hide: true,
     },
     {
       field: "status",
       headerName: "Status",
       width: 150,
-      filter: "agSetColumnFilter",
+      filter: "agTextColumnFilter",
       cellRenderer: statusCellRenderer,
       cellClass: "text-left",
     },
   ];
+
+  // External filter for the "Target" sidebar button (multi-status union:
+  // new + shortlisted + applying). Column-level text filters only support
+  // OR of 2 conditions on AG Grid Community; the external-filter hook is
+  // the documented Community-supported way to express N-of-many.
+  const TARGET_STATUSES = new Set(["new", "shortlisted", "applying"]);
+  function isExternalFilterPresent() {
+    return window._jiaTargetFilter === true;
+  }
+  function doesExternalFilterPass(node) {
+    if (!window._jiaTargetFilter) return true;
+    return node.data && TARGET_STATUSES.has(node.data.status);
+  }
 
   const gridOptions = {
     columnDefs,
@@ -252,6 +278,8 @@
     rowHeight: 38,
     headerHeight: 36,
     floatingFiltersHeight: 32,
+    isExternalFilterPresent,
+    doesExternalFilterPass,
     onRowClicked,
     onGridReady: async (params) => {
       window._jiaGrid = params.api;

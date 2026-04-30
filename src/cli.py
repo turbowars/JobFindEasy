@@ -30,6 +30,7 @@ logging.basicConfig(
 )
 
 from . import db
+from .cover_letter import autogen_cover_letter_if_missing
 from .enrichment.llm_scorer import compute_tier, make_client, score_job
 from .enrichment.prefilter import prefilter as run_prefilter
 from .notify import notify_strong_fits as do_notify
@@ -142,6 +143,15 @@ def score(limit: int):
             )
             if path:
                 auto_resumes += 1
+                # Pair the resume with a cover letter for top fits. Coupled
+                # to the resume autogen so the daily cap stays unified;
+                # IC-titled jobs are skipped silently inside the helper.
+                autogen_cover_letter_if_missing(
+                    j["title"],
+                    j["company"],
+                    j["description"] or "",
+                    location=j.get("location") or "",
+                )
 
     console.print(f"[green]scored {scored} jobs[/]")
     if auto_resumes:

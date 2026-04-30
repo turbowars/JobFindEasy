@@ -640,8 +640,19 @@ tr.row.selected {
 }
 
 .status-new          { color: rgba(232, 232, 232, 0.38); }
+/* Not Interested: terminal but never engaged. Muted grey like closed,
+ * with a subtle line-through to visually signal "skipped". */
+.status-not-interested { color: rgba(232, 232, 232, 0.32); opacity: 0.7; text-decoration: line-through; }
+/* No Sponsorship: terminal, never engaged because the JD denied/omitted
+ * visa sponsorship. Same dimmed treatment as not_interested but no
+ * line-through — these jobs aren't user-rejected, just gated. */
+.status-no-sponsorship { color: rgba(232, 232, 232, 0.36); opacity: 0.72; font-style: italic; }
 .status-shortlisted  { color: rgba(232, 232, 232, 0.62); }
-.status-applying     { color: #10b981; background: rgba(16, 185, 129, 0.10); }
+/* Applying uses amber/yellow (#f59e0b — same hue as the score-bar's
+ * "possible" tier) so it visually pops against the green-coded states
+ * (applied / interviewing / offer) and Dheeraj can spot in-flight
+ * applications at a glance. */
+.status-applying     { color: #f59e0b; background: rgba(245, 158, 11, 0.12); border-color: #f59e0b; }
 .status-applied      { color: #10b981; background: rgba(16, 185, 129, 0.18); }
 .status-interviewing { color: #10b981; background: rgba(16, 185, 129, 0.24); border-style: dashed; }
 .status-offer        { color: #0d0d0e; background: #10b981; border-color: #10b981; font-weight: 600; }
@@ -675,8 +686,10 @@ tr.row.selected {
 }
 
 .status-pill.state-current.status-new          { color: rgba(232, 232, 232, 0.85); background: rgba(38, 38, 42, 0.7); }
+.status-pill.state-current.status-not-interested { color: rgba(232, 232, 232, 0.78); background: rgba(38, 38, 42, 0.7); border-color: rgba(232, 232, 232, 0.4); text-decoration: line-through; }
+.status-pill.state-current.status-no-sponsorship { color: rgba(232, 232, 232, 0.78); background: rgba(38, 38, 42, 0.7); border-color: rgba(232, 232, 232, 0.4); font-style: italic; }
 .status-pill.state-current.status-shortlisted  { color: rgba(232, 232, 232, 0.95); background: rgba(38, 38, 42, 0.8); }
-.status-pill.state-current.status-applying     { color: #10b981; background: rgba(16, 185, 129, 0.14); border-color: #10b981; }
+.status-pill.state-current.status-applying     { color: #f59e0b; background: rgba(245, 158, 11, 0.16); border-color: #f59e0b; }
 .status-pill.state-current.status-applied      { color: #10b981; background: rgba(16, 185, 129, 0.22); border-color: #10b981; }
 .status-pill.state-current.status-interviewing { color: #10b981; background: rgba(16, 185, 129, 0.28); border-style: dashed; border-color: #10b981; }
 .status-pill.state-current.status-offer        { color: #0d0d0e; background: #10b981; border-color: #10b981; font-weight: 600; }

@@ -20,9 +20,17 @@ import re
 
 from .sponsorship import detect_sponsorship
 
-# Title patterns we want
+# Title patterns we want. Two tracks are in scope:
+#   EM:  Engineering Manager / Director / VP / Head of Engineering
+#   IC:  Staff / Senior Staff / Principal Engineer (frontend, product,
+#        full-stack, software, web platform); Tech Lead variants.
+# Bug surfaced 2026-04-30: the EM-only ruleset was rejecting Dheeraj's
+# entire IC track — "Staff Software Engineer, Frontend Engineering" etc.
+# were falling through to "no title match and weak signals" and never
+# reaching the scorer.
 TITLE_GOOD = re.compile(
     r"\b("
+    # ── EM track ──
     r"engineering\s+manager|"
     r"director\s+of\s+engineering|director,\s*engineering|"
     r"head\s+of\s+engineering|"
@@ -31,10 +39,26 @@ TITLE_GOOD = re.compile(
     r"sr\.?\s*manager,?\s*(software\s+)?engineering|"
     r"em,?\s*frontend|em,?\s*platform|"
     r"frontend\s+(engineering\s+)?lead|"
+    r"engineering\s+lead|"
     r"staff\s+engineer.*manager|"
     r"tech\s+lead\s+manager|"
-    r"engineering\s+lead|"
-    r"principal\s+engineer.*manage"
+    r"principal\s+engineer.*manage|"
+    # ── IC track: Staff / Principal Frontend / Product / Full-Stack ──
+    r"(senior\s+)?staff\s+(frontend|front[\s\-]?end|product|full[\s\-]?stack|software|web\s+platform)\s+engineer|"
+    r"principal\s+(frontend|front[\s\-]?end|product|full[\s\-]?stack|software|web\s+platform)\s+engineer|"
+    # ── IC track: Senior Frontend/Product/Full-Stack Engineer ──
+    r"senior\s+(frontend|front[\s\-]?end|product|full[\s\-]?stack)\s+engineer|"
+    # ── IC track: Full-Stack Engineer (any seniority — user explicitly allowed) ──
+    r"full[\s\-]?stack\s+engineer|"
+    # ── IC track: AI / Forward Deployed Engineer (user explicitly allowed) ──
+    r"(senior\s+|staff\s+|principal\s+)?ai\s+engineer|"
+    r"(senior\s+|staff\s+|principal\s+)?forward[\s\-]?deployed\s+engineer|"
+    # ── Architect track: tech / web / react / frontend architect ──
+    r"(senior\s+|staff\s+|principal\s+|lead\s+)?(tech(nical)?|web|react|front[\s\-]?end|frontend)\s+architect|"
+    # ── IC track: Tech Lead variants (Dheeraj's actual Equifax line) ──
+    r"(staff|principal|senior\s+staff)?\s*(frontend|front[\s\-]?end|full[\s\-]?stack|software\s+engineer)\s+tech\s+lead|"
+    r"tech\s+lead,?\s+(frontend|front[\s\-]?end|full[\s\-]?stack|platform)|"
+    r"web\s+platform\s+engineer"
     r")\b",
     re.IGNORECASE,
 )

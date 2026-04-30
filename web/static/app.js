@@ -4,6 +4,162 @@
 
 
 // --------------------------------------------------------------------------
+// Browser notifications for completed generations.
+//
+// Chrome's Notification API requires user-gesture-attached permission
+// requests, so we hook the FIRST click anywhere on the page (any user
+// gesture qualifies) and ask once. Subsequent generation completions —
+// detected via the generations tray's data-generation-state attribute
+// flipping from "running" to "done" / "failed" — fire a notification
+// labeled with the kind + title + company. The seen-set dedupes so we
+// don't re-notify on every poll, and seeds itself with already-done rows
+// on first render so old completions don't burst-notify on page load.
+// --------------------------------------------------------------------------
+const _jiaNotifySeen = new Set();
+let _jiaNotifySeeded = false;
+const _jiaKindLabel = { resume: "Resume", cover: "Cover letter", refine: "Refine" };
+
+function _jiaCanNotify() {
+  return typeof Notification !== "undefined" && Notification.permission === "granted";
+}
+
+function _jiaUpdateNotifyToggleLabel() {
+  const el = document.getElementById("jia-notify-status");
+  if (!el) return;
+  if (typeof Notification === "undefined") {
+    el.textContent = "🔔 Notifications: not supported";
+    return;
+  }
+  const p = Notification.permission;
+  if (p === "granted") {
+    el.textContent = "🔔 Notifications: enabled ✓";
+  } else if (p === "denied") {
+    el.textContent =
+      "🔔 Notifications: blocked — open chrome://settings/content/notifications, find 127.0.0.1:8826, allow";
+  } else {
+    el.textContent = "🔔 Notifications: click to enable";
+  }
+}
+
+async function _jiaRequestNotificationPermissionExplicit() {
+  if (typeof Notification === "undefined") return;
+  // requestPermission must run from a user-gesture handler (this is fine —
+  // we're inside a click listener). Calling it on a denied origin is a
+  // no-op; the user has to manually unblock via chrome settings.
+  try {
+    await Notification.requestPermission();
+  } catch (err) {
+    console.warn("notification permission request failed:", err);
+  }
+  _jiaUpdateNotifyToggleLabel();
+  // Optional: send a one-shot test notification on grant so the user
+  // immediately sees that it works (pre-empts "is this even on?" doubt).
+  if (Notification.permission === "granted") {
+    try {
+      const n = new Notification("JobFindEasy notifications enabled", {
+        body: "You'll get pinged when resumes / cover letters / refines complete.",
+        tag: "jia-permission-confirm",
+      });
+      setTimeout(() => n.close(), 4000);
+    } catch (_e) {
+      // Some browsers reject the test notification synchronously after
+      // grant — not worth interrupting the flow.
+    }
+  }
+}
+
+// Wire the sidebar toggle button.
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("#jia-notify-toggle");
+  if (!btn) return;
+  e.preventDefault();
+  _jiaRequestNotificationPermissionExplicit();
+});
+
+// Initial label set + a soft auto-prompt on the first user gesture (kept
+// for users whose Chrome heuristics still allow it; the toggle button is
+// the reliable path for everyone else).
+_jiaUpdateNotifyToggleLabel();
+document.addEventListener(
+  "click",
+  () => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission()
+        .catch(() => {})
+        .finally(_jiaUpdateNotifyToggleLabel);
+    }
+  },
+  { once: true },
+);
+
+function _jiaScanGenerationsForCompletions(rootEl) {
+  const rows = rootEl.querySelectorAll("[data-generation-id][data-generation-state]");
+  // First swap after page load: seed the seen-set without firing notifications
+  // for completions that already happened before we got here.
+  if (!_jiaNotifySeeded) {
+    rows.forEach((r) => {
+      const state = r.dataset.generationState;
+      if (state === "done" || state === "failed") {
+        _jiaNotifySeen.add(r.dataset.generationId);
+      }
+    });
+    _jiaNotifySeeded = true;
+    return;
+  }
+  rows.forEach((r) => {
+    const id = r.dataset.generationId;
+    const state = r.dataset.generationState;
+    if (!id || (state !== "done" && state !== "failed")) return;
+    if (_jiaNotifySeen.has(id)) return;
+    _jiaNotifySeen.add(id);
+    _jiaFireNotification({
+      state,
+      kind: r.dataset.generationKind || "resume",
+      title: r.dataset.generationTitle || "",
+      company: r.dataset.generationCompany || "",
+      hash: r.dataset.hash || "",
+    });
+  });
+}
+
+function _jiaFireNotification({ state, kind, title, company, hash }) {
+  if (!_jiaCanNotify()) return;
+  const kindLabel = _jiaKindLabel[kind] || kind;
+  const headline = state === "failed"
+    ? `${kindLabel} generation failed`
+    : `${kindLabel} ready: ${company}`;
+  const body = state === "failed"
+    ? `${title} at ${company}`
+    : title;
+  try {
+    const n = new Notification(headline, {
+      body,
+      tag: `jia-${kind}-${hash || title}`,  // newer notifications replace older ones for the same job
+      icon: "/static/icons/notification.png",  // optional; falls back if missing
+      silent: false,
+    });
+    n.onclick = () => {
+      window.focus();
+      if (hash && typeof window.jia_openJobDetail === "function") {
+        window.jia_openJobDetail(hash);
+      }
+      n.close();
+    };
+  } catch (err) {
+    // Some browsers throw if we exceed quota or are in restricted mode.
+    // Notification is a nice-to-have, never block on it.
+    console.warn("notification failed:", err);
+  }
+}
+
+document.body.addEventListener("htmx:afterSwap", (e) => {
+  if (e.target && e.target.id === "generations") {
+    _jiaScanGenerationsForCompletions(e.target);
+  }
+});
+
+
+// --------------------------------------------------------------------------
 // Clipboard copy: any element with [data-copy] gets click-to-copy behaviour.
 // Per-cell copy buttons in the table use this; quick-copy code blocks too.
 // --------------------------------------------------------------------------
@@ -31,6 +187,31 @@ document.addEventListener("click", (e) => {
     e.stopPropagation();
     copyText(target, text);
   }
+});
+
+// --------------------------------------------------------------------------
+// Copy a rendered preview block (resume / cover letter) to the clipboard
+// as plain text. Buttons use [data-action="copy-preview"][data-preview-target]
+// pointing at the element whose `innerText` we read. Plain text (not HTML)
+// is what ATS forms accept when they ask for "paste your resume".
+// --------------------------------------------------------------------------
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-action='copy-preview']");
+  if (!btn) return;
+  e.stopPropagation();
+  const targetId = btn.dataset.previewTarget;
+  const el = targetId ? document.getElementById(targetId) : null;
+  if (!el) {
+    flashMessage("preview not loaded yet");
+    return;
+  }
+  const text = (el.innerText || "").trim();
+  if (!text) {
+    flashMessage("nothing to copy");
+    return;
+  }
+  copyText(btn, text);
+  flashMessage(`✓ copied ${text.length.toLocaleString()} chars`);
 });
 
 // --------------------------------------------------------------------------
@@ -69,25 +250,49 @@ function _currentRowIndex() {
   return -1;
 }
 
+// Shared "open the detail panel for this hash" routine. Used by:
+//   - keyboard nav (j/k) via _selectRowByIndex
+//   - generations-tray click (jumps to a job from the sidebar tray)
+// Always reveals the detail pane and remembers the selection.
+function openJobDetail(hash) {
+  if (!hash) return;
+  window._jiaSelectedHash = hash;
+  document.querySelector(".jia-app")?.classList.add("has-detail");
+  if (window.htmx) {
+    htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
+  }
+  // If the grid is loaded, also sync row selection so highlighting matches.
+  if (_gridReady()) {
+    const total = window._jiaGrid.getDisplayedRowCount();
+    for (let i = 0; i < total; i++) {
+      const node = window._jiaGrid.getDisplayedRowAtIndex(i);
+      if (node && node.data && node.data.hash === hash) {
+        window._jiaGrid.deselectAll();
+        node.setSelected(true, true);
+        window._jiaGrid.ensureIndexVisible(i, "middle");
+        window._jiaGrid.redrawRows({ rowNodes: [node] });
+        return;
+      }
+    }
+  }
+}
+window.jia_openJobDetail = openJobDetail;
+
 function _selectRowByIndex(idx) {
   if (!_gridReady()) return;
   const node = window._jiaGrid.getDisplayedRowAtIndex(idx);
   if (!node || !node.data) return;
-  const hash = node.data.hash;
-  window._jiaSelectedHash = hash;
-  // AG Grid: highlight the row natively and scroll it into view.
-  window._jiaGrid.deselectAll();
-  node.setSelected(true, true);
-  window._jiaGrid.ensureIndexVisible(idx, "middle");
-  // Refresh the row class rules so .row-selected styling re-applies.
-  window._jiaGrid.redrawRows({ rowNodes: [node] });
-  // Reveal the detail pane (collapsed by default to give the grid full width).
-  document.querySelector(".jia-app")?.classList.add("has-detail");
-  // Load the detail panel via HTMX (mirrors the click flow in grid.js).
-  if (window.htmx) {
-    htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
-  }
+  openJobDetail(node.data.hash);
 }
+
+// Generations tray rows carry [data-action="open-job-detail"][data-hash="..."]
+// so clicking a row in the sidebar jumps to that job's detail pane.
+document.addEventListener("click", (e) => {
+  const row = e.target.closest("[data-action='open-job-detail']");
+  if (!row) return;
+  e.stopPropagation();
+  openJobDetail(row.dataset.hash);
+});
 
 function navigate(delta) {
   if (!_gridReady()) return;
@@ -204,21 +409,24 @@ document.body.addEventListener("htmx:afterRequest", (e) => {
 // Closed pill uses an <sl-dropdown> menu of reasons (sl-select event).
 // --------------------------------------------------------------------------
 async function setJobStatus(hash, status, closedReason) {
-  const body = new URLSearchParams({ status });
-  if (closedReason) body.set("closed_reason", closedReason);
-  const r = await fetch(`/actions/status/${hash}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  if (!r.ok) {
+  // htmx.ajax drives the POST so HTMX auto-processes the OOB badges fragment
+  // the server returns (web/app.py:_badges_oob_html). No second round-trip
+  // for /partials/badges needed.
+  const values = { status };
+  if (closedReason) values.closed_reason = closedReason;
+  try {
+    await htmx.ajax("POST", `/actions/status/${hash}`, {
+      source: "body",
+      values,
+      swap: "none",
+    });
+  } catch (err) {
     flashMessage("Status update failed");
     return false;
   }
-  // Refresh detail pane (so pill states re-render) and grid (so chip + sidebar counts update)
+  // Detail pane + grid still need explicit refresh — they're not OOB targets.
   htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
   if (typeof window.jia_refreshGrid === "function") window.jia_refreshGrid();
-  htmx.ajax("GET", "/partials/badges", { target: "#badges", swap: "innerHTML" });
   return true;
 }
 
@@ -270,17 +478,133 @@ document.addEventListener("click", async (e) => {
 });
 
 // Pipeline rows in the sidebar — click filters the grid by that status.
+// Click the active row again to clear. Uses the grid-level setFilterModel
+// API with the text-filter shape because we're on AG Grid Community (the
+// `agSetColumnFilter` declared on the column silently falls back to text;
+// the set-filter `{values: [...]}` shape is enterprise-only and didn't
+// apply, which is the bug the user reported).
+function _applyStatusFilter(status) {
+  if (!window._jiaGrid) return;
+  // Per-status and Target are mutually exclusive — clicking a single
+  // status while Target is active turns Target off, otherwise the row
+  // disappears (status='applied' isn't in the Target union).
+  window._jiaTargetFilter = false;
+  const current = window._jiaGrid.getFilterModel() || {};
+  const isActive = current.status && current.status.filter === status;
+  const next = { ...current };
+  if (isActive) {
+    delete next.status;
+  } else {
+    next.status = { filterType: "text", type: "equals", filter: status };
+  }
+  window._jiaGrid.setFilterModel(next);
+  // The grid usually refreshes filters automatically on setFilterModel,
+  // but call onFilterChanged explicitly to be safe across versions.
+  if (typeof window._jiaGrid.onFilterChanged === "function") {
+    window._jiaGrid.onFilterChanged();
+  }
+  _paintActivePipelineButton();
+}
+
+// "All alerts" — escape hatch that clears both the Target external filter
+// and any per-status column filter. Doesn't touch other column filters
+// (location, company, score range — those stay).
+function _clearAllPipelineFilters() {
+  if (!window._jiaGrid) return;
+  window._jiaTargetFilter = false;
+  const current = window._jiaGrid.getFilterModel() || {};
+  if (current.status) {
+    const next = { ...current };
+    delete next.status;
+    window._jiaGrid.setFilterModel(next);
+  }
+  if (typeof window._jiaGrid.onFilterChanged === "function") {
+    window._jiaGrid.onFilterChanged();
+  }
+  _paintActivePipelineButton();
+}
+
+// "Target" sidebar filter — the actionable queue (new + shortlisted +
+// applying). Driven by the grid's external-filter hook (declared in
+// grid.js); we just toggle the flag and ping the grid.
+function _applyTargetFilter() {
+  if (!window._jiaGrid) return;
+  const turningOn = !window._jiaTargetFilter;
+  window._jiaTargetFilter = turningOn;
+  // Mutually exclusive with the column-level status filter — clearing
+  // it prevents intersection-empty results.
+  if (turningOn) {
+    const current = window._jiaGrid.getFilterModel() || {};
+    if (current.status) {
+      const next = { ...current };
+      delete next.status;
+      window._jiaGrid.setFilterModel(next);
+    }
+  }
+  if (typeof window._jiaGrid.onFilterChanged === "function") {
+    window._jiaGrid.onFilterChanged();
+  }
+  _paintActivePipelineButton();
+}
+
+// Read the grid's current status filter, mark the corresponding sidebar
+// button as active. Called after each click and after badges OOB swaps
+// (the buttons re-render fresh from the server and lose their class).
+function _paintActivePipelineButton() {
+  const model = window._jiaGrid && window._jiaGrid.getFilterModel
+    ? (window._jiaGrid.getFilterModel() || {})
+    : {};
+  const active = model.status && model.status.filter ? model.status.filter : null;
+  document.querySelectorAll("[data-status-filter]").forEach((b) => {
+    const isActive = b.dataset.statusFilter === active;
+    b.classList.toggle("bg-accent/10", isActive);
+    b.classList.toggle("text-accent", isActive);
+    b.classList.toggle("ring-1", isActive);
+    b.classList.toggle("ring-accent/40", isActive);
+  });
+  document.querySelectorAll("[data-target-filter]").forEach((b) => {
+    const isActive = window._jiaTargetFilter === true;
+    b.classList.toggle("bg-accent/10", isActive);
+    b.classList.toggle("text-accent", isActive);
+    b.classList.toggle("ring-1", isActive);
+    b.classList.toggle("ring-accent/40", isActive);
+  });
+  // "All alerts" button is active when no pipeline filter is on (Target
+  // off AND no per-status filter set).
+  document.querySelectorAll("[data-all-filter]").forEach((b) => {
+    const noPipelineFilter = !window._jiaTargetFilter && !active;
+    b.classList.toggle("bg-accent/10", noPipelineFilter);
+    b.classList.toggle("text-accent", noPipelineFilter);
+    b.classList.toggle("ring-1", noPipelineFilter);
+    b.classList.toggle("ring-accent/40", noPipelineFilter);
+  });
+}
+
 document.addEventListener("click", (e) => {
+  const allBtn = e.target.closest("[data-all-filter]");
+  if (allBtn) {
+    e.preventDefault();
+    _clearAllPipelineFilters();
+    return;
+  }
+  const targetBtn = e.target.closest("[data-target-filter]");
+  if (targetBtn) {
+    e.preventDefault();
+    _applyTargetFilter();
+    return;
+  }
   const btn = e.target.closest("[data-status-filter]");
   if (!btn) return;
   e.preventDefault();
-  if (!window._jiaGrid) return;
-  const status = btn.dataset.statusFilter;
-  // AG Grid set filter for the status column
-  const filter = window._jiaGrid.getFilterInstance("status");
-  if (filter && filter.setModel) {
-    filter.setModel({ values: [status] });
-    window._jiaGrid.onFilterChanged();
+  _applyStatusFilter(btn.dataset.statusFilter);
+});
+
+// Re-apply the active class after the badges partial OOB-swaps (the buttons
+// are re-rendered HTML, so they lose the class we set on the previous
+// click). HTMX dispatches `htmx:afterSwap` on the swapped element.
+document.body.addEventListener("htmx:afterSwap", (e) => {
+  if (e.target && e.target.id === "badges") {
+    _paintActivePipelineButton();
   }
 });
 
@@ -290,6 +614,13 @@ document.addEventListener("click", (e) => {
 //   - the AG Grid URL cell renderer (links open in new tab AND mark applying)
 // Returns a Promise so callers can await UI refresh if they need to. Errors
 // surface as a flash message; the function never throws to its caller.
+// NOTE: markApplying stays on fetch (not htmx.ajax) because /actions/apply
+// returns JSON we read here (`transitioned`, `status`) to drive the flash
+// message ("already applied — keeping current status" vs "▶ status:
+// applying"). htmx.ajax doesn't expose the JSON body cleanly. Switching
+// to OOB would require a server-side refactor to use HX-Trigger headers
+// — bigger than this turn's scope. The manual /partials/badges GET below
+// stays for the same reason.
 async function markApplying(hash) {
   if (!hash) return;
   let payload;
@@ -329,21 +660,24 @@ async function setStatus(hash, value, selectEl) {
     status = "closed";
     reason = value.slice("closed:".length);
   }
-  const fd = new FormData();
-  fd.append("status", status);
-  if (reason) fd.append("closed_reason", reason);
+  // htmx.ajax drives the POST so HTMX auto-processes the OOB badges fragment
+  // the server returns. No follow-up /partials/badges call needed.
+  const values = { status };
+  if (reason) values.closed_reason = reason;
   try {
-    const r = await fetch(`/actions/status/${hash}`, { method: "POST", body: fd });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    await htmx.ajax("POST", `/actions/status/${hash}`, {
+      source: "body",
+      values,
+      swap: "none",
+    });
   } catch (err) {
-    flashMessage("status update failed: " + err.message);
+    flashMessage("status update failed: " + (err && err.message ? err.message : err));
     return;
   }
   if (window._jiaSelectedHash === hash) {
     htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
   }
   if (typeof window.jia_refreshGrid === "function") window.jia_refreshGrid();
-  htmx.ajax("GET", "/partials/badges", { target: "#badges", swap: "innerHTML" });
   flashMessage(`status: ${status}${reason ? " · " + reason.replace(/_/g, " ") : ""}`);
 }
 window.jia_setStatus = setStatus;

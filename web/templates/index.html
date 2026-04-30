@@ -7,17 +7,22 @@ body %}
     <div class="text-base font-semibold tracking-tight">JobFindEasy</div>
   </div>
 
-  <!-- Status badges (poll 5s) -->
+  <!-- Status badges. Per-mutation refresh comes from HTMX OOB swaps on the
+       /actions/status response; this slow poll only catches autoscrape ticks
+       (which mutate state without going through a user endpoint). -->
   <div
     id="badges"
     hx-get="/partials/badges"
-    hx-trigger="load, every 5s"
+    hx-trigger="load, every 60s"
     hx-swap="innerHTML"
   >
     <sl-skeleton effect="pulse" style="height: 48px"></sl-skeleton>
   </div>
 
-  <!-- Generations tray (poll 2s) -->
+  <!-- Generations tray. Slow catch-up poll (5s) for executor completions
+       that finish without an HTTP request; instant refresh via the custom
+       jia-generations-changed event when the user kicks off / clears one
+       (server fires the event via HX-Trigger response header). -->
   <details open>
     <summary
       class="text-[11px] uppercase tracking-[0.12em] text-ink-3 cursor-pointer select-none py-1"
@@ -28,14 +33,16 @@ body %}
       id="generations"
       class="mt-1.5"
       hx-get="/partials/generations"
-      hx-trigger="load, every 2s"
+      hx-trigger="load, every 5s, jia-generations-changed from:body"
       hx-swap="innerHTML"
     >
       <sl-skeleton effect="pulse" style="height: 24px"></sl-skeleton>
     </div>
   </details>
 
-  <!-- Auto-scrape (poll 5s) -->
+  <!-- Auto-scrape. Slow catch-up poll (30s) — autoscrape ticks every 6h
+       by default, so 5s polling was 360x more frequent than the data
+       changes. Instant refresh on toggle/config via HX-Trigger. -->
   <details>
     <summary
       class="text-[11px] uppercase tracking-[0.12em] text-ink-3 cursor-pointer select-none py-1"
@@ -46,14 +53,16 @@ body %}
       id="autoscrape"
       class="mt-1.5"
       hx-get="/partials/autoscrape"
-      hx-trigger="load, every 5s"
+      hx-trigger="load, every 30s, jia-autoscrape-changed from:body"
       hx-swap="innerHTML"
     >
       <sl-skeleton effect="pulse" style="height: 24px"></sl-skeleton>
     </div>
   </details>
 
-  <!-- Bulk gen — primary action -->
+  <!-- Bulk gen — primary action. Two parallel buttons: one for resumes,
+       one for cover letters. Both queue work onto the shared 3-worker
+       executor; cover letters skip IC-track titles silently. -->
   <sl-button
     variant="primary"
     size="small"
@@ -62,6 +71,16 @@ body %}
     hx-swap="none"
   >
     Generate missing strong-fit resumes
+  </sl-button>
+  <sl-button
+    variant="default"
+    size="small"
+    style="width: 100%; margin-top: 0.4rem"
+    hx-post="/actions/bulk-generate-covers"
+    hx-swap="none"
+    title="Cover letters for strong-fit EM jobs that don't have one yet (IC titles skipped)"
+  >
+    Generate missing cover letters
   </sl-button>
 
   <!-- Inject job by URL -->
@@ -91,6 +110,18 @@ body %}
       <div id="inject-status" class="text-[11px] text-ink-3 leading-snug"></div>
     </form>
   </details>
+
+  <!-- Browser notifications toggle. Click status to (re-)request permission;
+       useful when Chrome auto-denied or when the implicit first-click prompt
+       didn't fire. State updates after permission resolves. -->
+  <button
+    id="jia-notify-toggle"
+    type="button"
+    class="text-[11px] text-ink-3 hover:text-accent text-left w-full pt-2 border-t border-base-300/40 cursor-pointer"
+    title="Click to enable browser notifications when generations complete"
+  >
+    <span id="jia-notify-status">🔔 Notifications: …</span>
+  </button>
 
   <div
     class="text-[10px] text-ink-3 leading-relaxed pt-2 border-t border-base-300/40"

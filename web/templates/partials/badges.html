@@ -1,4 +1,5 @@
-{# Live count badges — polled every 5s.
+{# Live count badges. Refreshed instantly via HTMX OOB swap on user mutations
+   (POST /actions/status); slow 60s poll catches autoscrape state changes.
 
    Hierarchy: only the "strong" count gets the accent color (the thing that
    actually matters). Everything else is muted. Follow-up gets a subtle
@@ -22,6 +23,35 @@
 {# Pipeline counts — one click per row filters the grid by that status. #}
 <div class="mt-2 space-y-0.5">
   <div class="text-[10px] uppercase tracking-[0.12em] text-ink-3 mb-1">Pipeline</div>
+
+  {# "All alerts" — clears Target + any per-status filter. Count is the
+     total job set (matches the toolbar grid-count when no other filter
+     is active). #}
+  <button type="button"
+          data-all-filter
+          class="w-full flex items-center justify-between gap-2 px-1.5 py-0.5 rounded text-[12px] hover:bg-base-200/50 {{ 'text-ink' if total else 'text-ink-3' }}"
+          title="Clear all filters — show every alert">
+    <span class="flex items-center gap-1.5">
+      <span class="status-glyph text-[11px] opacity-70">≡</span>
+      <span class="font-medium">All alerts</span>
+    </span>
+    <span class="tabular-nums {{ 'font-semibold' if total else '' }}">{{ total }}</span>
+  </button>
+
+  {# "Target" — the actionable queue (new + shortlisted + applying). Mutually
+     exclusive with the per-status filters below; clicking either kind
+     deactivates the other in app.js. #}
+  <button type="button"
+          data-target-filter
+          class="w-full flex items-center justify-between gap-2 px-1.5 py-0.5 rounded text-[12px] hover:bg-base-200/50 {{ 'text-accent' if target_count else 'text-ink-3' }}"
+          title="New + Shortlisted + Applying — your actionable queue">
+    <span class="flex items-center gap-1.5">
+      <span class="status-glyph text-[11px] opacity-70">◎</span>
+      <span class="font-medium">Target</span>
+    </span>
+    <span class="tabular-nums {{ 'font-semibold' if target_count else '' }}">{{ target_count }}</span>
+  </button>
+
   {% for p in pipeline %}
     <button type="button"
             data-status-filter="{{ p.key }}"

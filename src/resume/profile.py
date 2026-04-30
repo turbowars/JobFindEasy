@@ -40,6 +40,275 @@ APPLICATION_DEFAULTS = {
     "work_authorization": "Authorized to work in the US, requires H-1B transfer. Sponsorship REQUIRED.",
 }
 
+# ---------------------------------------------------------------------------
+# Cover-letter locked content (EM track).
+#
+# The cover letter follows a fixed master template:
+#   1. Greeting          (locked, hiring-manager name optional)
+#   2. Opening hook      (LLM picks variant; locked phrasings)
+#   3. Company hook      (LLM extracts from JD or omits if filler)
+#   4. Background        (locked, exact text below)
+#   5. 3 signal bullets  (LLM picks one from each pool category)
+#   6. Company-fit line  (LLM only writes if specific; otherwise omitted)
+#   7. Sign-off          (locked)
+#
+# This file owns all locked text and the bullet pool. The cover-letter
+# pipeline picks from these structures; it never invents new pool entries.
+# ---------------------------------------------------------------------------
+
+# Standard background: people-leadership-dominant JDs.
+COVER_LETTER_BACKGROUND_STANDARD = (
+    "I'm an engineering manager with 15+ years leading frontend and "
+    "full-stack teams that own products end to end, from design partnership "
+    "through development, QA, and production operations. At Equifax I lead "
+    "the frontend platform group; before that I led delivery at Midigator "
+    "(acquired by Equifax) and ran cross-geo engineering teams at TA Digital "
+    "across engagements with Bose, Fitbit, AARP, and Strategic Education."
+)
+
+# Hybrid background: balanced JDs (modern EM roles at growth-stage companies
+# where IC and people-leadership signals are roughly equal). Honest about
+# the player-coach split so the recruiter doesn't read pure people-manager.
+COVER_LETTER_BACKGROUND_HYBRID = (
+    "I'm a hands-on engineering manager with 15+ years across frontend and "
+    "full-stack. I spend roughly 40% of my time in code (architecture, hard "
+    "problems, code review) and 60% leading the team that ships it. At "
+    "Equifax I lead the frontend platform group; before that I led delivery "
+    "at Midigator (acquired by Equifax) and ran cross-geo engineering teams "
+    "at TA Digital across engagements with Bose, Fitbit, AARP, and "
+    "Strategic Education."
+)
+
+COVER_LETTER_BULLETS_LEAD = (
+    "A few things from my track record that line up with what you're hiring for:"
+)
+
+COVER_LETTER_SIGNOFF = (
+    "Resume attached. More at dheerajsampath.com and "
+    "linkedin.com/in/evolvingdx. Happy to find time for a call."
+)
+
+COVER_LETTER_CLOSING = "Thanks,\nDheeraj Sampath"
+
+
+# JD-signal -> bullet lookup. Each entry is one canonical bullet drawn from
+# locked experience. The LLM picks 3 different signals from this table based
+# on the JD; the pipeline maps signal -> bullet text. No invention, no
+# fabrication. Phrases live alongside so the prompt + frame check share the
+# same vocabulary.
+COVER_LETTER_BULLETS_BY_SIGNAL = {
+    "turnaround": {
+        "phrases": [
+            "turn around",
+            "turnaround",
+            "rescue",
+            "stuck",
+            "stalled",
+            "complex stakeholders",
+            "drive clarity",
+        ],
+        "bullet": (
+            "Took over a year-long stalled redesign at Fitbit as Scrum "
+            "Master and Tech Lead. Established sprint cadence, rebuilt the "
+            "client demo loop, set code review and QA standards, shipped to "
+            "production with zero P0 or P1 defects across a 14-person "
+            "cross-functional team. Fitbit extended the engagement on the "
+            "back of that delivery."
+        ),
+    },
+    "team_scaling": {
+        "phrases": [
+            "scale a team",
+            "scale the team",
+            "grow the org",
+            "grow the team",
+            "hiring",
+            "headcount",
+            "build out",
+            "scale up",
+        ],
+        "bullet": (
+            "Grew the engineering team from 5 to 12 at nowfloats without "
+            "regressing velocity. Owned the hiring loop, technical interview "
+            "design, and onboarding playbook; mentored two engineers into "
+            "senior roles."
+        ),
+    },
+    "platform_devex": {
+        "phrases": [
+            "platform",
+            "shared infrastructure",
+            "developer experience",
+            "developer productivity",
+            "internal tools",
+            "internal platform",
+            "design system",
+            "tooling",
+        ],
+        "bullet": (
+            "Lead the React and TypeScript micro-frontend platform powering "
+            "the consumer product suite at Equifax. Three product teams ship "
+            "against a shared component library and contract-tested design "
+            "tokens; build cycles down 25%, cross-team release blockers "
+            "eliminated."
+        ),
+    },
+    "end_to_end": {
+        "phrases": [
+            "end-to-end",
+            "end to end",
+            "production ownership",
+            "on-call",
+            "operational excellence",
+            "reliability",
+            "ownership of",
+        ],
+        "bullet": (
+            "My team owns its slice from design partnership through "
+            "Playwright and Vitest gates in CI, OpenTelemetry and Core Web "
+            "Vitals dashboards in production, and on-call rotations. Same "
+            "pattern at Midigator: embeddable SDK design through partner "
+            "integration testing and post-launch support."
+        ),
+    },
+    "cross_functional": {
+        "phrases": [
+            "cross-functional",
+            "cross functional",
+            "partner with",
+            "partner closely",
+            "stakeholder",
+            "ambiguity",
+            "navigate",
+        ],
+        "bullet": (
+            "Led a four-engineer cross-geo team for two years on the "
+            "Strategic Education redesign and shared component system "
+            "across Strayer and Sophia. Operated as the onshore technical "
+            "bridge across product, design, analytics, and offshore "
+            "engineering; ran architecture reviews, pairing, and "
+            "client-facing demos."
+        ),
+    },
+    "quality_testing": {
+        "phrases": [
+            "quality",
+            "testing culture",
+            "reduce defects",
+            "raise the bar",
+            "test coverage",
+            "regression",
+        ],
+        "bullet": (
+            "Led the front-end authentication layer for Bose integrated "
+            "end-to-end with Okta. Established testing patterns (unit, "
+            "integration, defensive error handling around every API "
+            "boundary, polished UI error states for every failure mode) "
+            "that became the delivery standard across every subsequent "
+            "engagement."
+        ),
+    },
+    "performance": {
+        "phrases": [
+            "performance",
+            "core web vitals",
+            "user experience",
+            "ux",
+            "speed",
+            "page load",
+            "lighthouse",
+        ],
+        "bullet": (
+            "Drove a Lighthouse-based performance program at Strategic "
+            "Education that lifted scores from the 40s into the 90s, with "
+            "image optimization alone improving page load by approximately "
+            "80%. Brought the site comfortably into Core Web Vitals 'Good' "
+            "thresholds."
+        ),
+    },
+    "mentoring": {
+        "phrases": [
+            "mentor",
+            "mentoring",
+            "grow engineers",
+            "develop engineers",
+            "career growth",
+            "career development",
+            "coaching",
+        ],
+        "bullet": (
+            "Mentor senior and staff-track ICs at Equifax through pairing, "
+            "architectural coaching, and code review. Author the RFCs and "
+            "run the design reviews that shape platform direction across "
+            "three teams."
+        ),
+    },
+    "ai_llm_em": {
+        "phrases": [
+            "ai",
+            "llm",
+            "ai-augmented",
+            "ai augmented",
+            "ai tooling",
+            "generative ai",
+            "claude",
+            "gpt",
+        ],
+        "bullet": (
+            "Shipped an LLM-powered code-review assistant (Anthropic Claude "
+            "API plus AST analysis) at Equifax adopted by 40+ engineers, "
+            "reducing post-merge defects roughly 30%. Owned the rollout: "
+            "scoping, integration, adoption, feedback loops."
+        ),
+    },
+}
+
+# Phrase-counting buckets used by the frame check. People-leadership terms
+# vs IC technical-depth terms; the ratio decides standard / hybrid /
+# ic-dominated. Ratios match the skill-doc rule: people >= 2x IC -> standard,
+# IC >= 2x people -> ic-dominated, otherwise hybrid.
+COVER_LETTER_PEOPLE_PHRASES = (
+    "hiring",
+    "performance management",
+    "perf review",
+    "1:1",
+    "one-on-one",
+    "growth plan",
+    "growth track",
+    "headcount",
+    "roadmap ownership",
+    "people manager",
+    "people leadership",
+    "manage",
+    "managing",
+    "manager",
+    "mentor",
+    "mentoring",
+    "coaching",
+    "stakeholder",
+    "cross-functional",
+    "cross functional",
+    "partner with",
+)
+COVER_LETTER_IC_PHRASES = (
+    "system design",
+    "architecture",
+    "code review",
+    "on-call",
+    "rfc",
+    "hands-on",
+    "hands on",
+    "load-bearing",
+    "individual contributor",
+    "ic ",
+    "deep technical",
+    "technical depth",
+    "specific framework",
+    "production code",
+    "ship code",
+    "writing code",
+)
+
 # Education (locked, exact strings).
 EDUCATION = [
     "Master of Business Administration, Digital Entrepreneurship - Strayer University, Herndon, VA",

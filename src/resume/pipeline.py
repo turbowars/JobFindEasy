@@ -23,9 +23,14 @@ from pathlib import Path
 
 from ..enrichment.ats_match import extract_keywords, match_keywords
 from ..enrichment.hr_score import hr_simulate
-from ..generate import mirror_to_public
 from ..llm import chat
-from ..utils import OUTPUT_DIR, safe_filename_part, safe_loc_suffix, scrub_dashes
+from ..utils import (
+    OUTPUT_DIR,
+    mirror_to_public,
+    safe_filename_part,
+    safe_loc_suffix,
+    scrub_dashes,
+)
 from . import profile, prompts
 from .docx_builder import build_docx
 from .template import Experience, Project, Resume, SkillCategory, flatten_for_match
@@ -59,19 +64,91 @@ _EM_TITLE_RE = re.compile(
 )
 
 
+# Common non-EM "Manager" roles that happen to mention "engineering"
+# somewhere in the JD title. We exclude these from the co-occurrence
+# fallback below so we don't misclassify a Project Manager as EM track.
+_NON_EM_MANAGER_RE = re.compile(
+    r"\b(project|product|account|customer|sales|marketing|community|program|operations)\s+manager\b",
+    re.IGNORECASE,
+)
+
+
 def detect_track(jd_title: str) -> str:
     """Return 'em' for management titles, 'ic' otherwise.
 
-    Intentionally simple — one regex against the JD title. Hybrid roles
-    (Player-Coach / Staff EM) match the EM regex and route to EM, which is
-    safer because EM resumes carry leadership signals IC resumes lack.
+    Two-stage detection:
+      1. The primary EM regex catches contiguous patterns
+         ("Engineering Manager", "Director of Engineering", "VP Engineering").
+      2. Fallback: when the JD title pairs "Manager" with "Engineering" but
+         in a non-contiguous shape ("Senior Manager, Platform Engineering"),
+         it's still an EM role — Twilio, Stripe, and others phrase EM titles
+         this way. We exclude common non-EM Manager titles (Project / Product
+         / Account / etc.) so we don't sweep them in.
+
+    Hybrid roles (Player-Coach / Staff EM) match the primary regex and
+    route to EM, which is safer because EM resumes carry leadership signals
+    IC resumes lack.
     """
-    return "em" if _EM_TITLE_RE.search(jd_title or "") else "ic"
+    title = jd_title or ""
+    if _EM_TITLE_RE.search(title):
+        return "em"
+    lower = title.lower()
+    if "manager" in lower and "engineering" in lower and not _NON_EM_MANAGER_RE.search(title):
+        return "em"
+    return "ic"
+
+
+# Separators we strip everything after when deriving the BASE role title for
+# the Equifax mirror. JDs use these to tack on team/product qualifiers
+# unique to the target company — "Engineering Manager, Autonomous Freight
+# Systems", "Director of Engineering - Developer Ecosystem". Those qualifiers
+# don't belong on Dheeraj's Equifax line because he never had that team at
+# Equifax. Adjective prefixes like "Senior" are kept because they live before
+# the role noun, not after.
+_TITLE_QUALIFIER_SEP_RE = re.compile(r"\s*,\s*|\s*:\s*|\s*\|\s*|\s+[-–—]\s+")
+
+
+def _base_role_title(jd_title: str) -> str:
+    """Strip the JD's team / product qualifier so the Equifax mirror reads
+    as a plausible Equifax role rather than a copy of the target company's
+    team name.
+
+    Examples:
+      "Engineering Manager, Autonomous Freight Systems" -> "Engineering Manager"
+      "Director of Engineering, Developer Ecosystem"    -> "Director of Engineering"
+      "Engineering Manager - Platform"                  -> "Engineering Manager"
+      "Senior Engineering Manager"                      -> "Senior Engineering Manager"  (no qualifier)
+      "VP of Engineering"                               -> "VP of Engineering"
+    """
+    if not jd_title:
+        return ""
+    m = _TITLE_QUALIFIER_SEP_RE.search(jd_title)
+    if m:
+        return jd_title[: m.start()].strip()
+    return jd_title.strip()
+
+
+# Recognized engineering-leadership phrasings — bases that already include
+# any of these survive verbatim. Bases that don't (e.g. plain "Senior
+# Manager" stripped from "Senior Manager, Platform Engineering") get
+# normalized to "Engineering Manager" so the Equifax mirror reads as a
+# plausible Equifax role rather than a generic "Senior Manager".
+_EM_BASE_PHRASING_RE = re.compile(
+    r"\b(engineering|director|vp|vice\s+president|head|chief\s+technology|cto)\b",
+    re.IGNORECASE,
+)
 
 
 def _equifax_title_override(jd_title: str, track: str) -> str:
+    base = _base_role_title(jd_title)
+    if track == "em" and not _EM_BASE_PHRASING_RE.search(base):
+        # JD's base title doesn't itself say "engineering" or any equivalent
+        # leadership phrasing (e.g., "Senior Manager"). Normalize to the
+        # canonical EM form so the Equifax line tells the recruiter the role
+        # was an engineering-management role, not a generic "Senior Manager".
+        base = "Engineering Manager"
     paren = "Engineering Lead" if track == "em" else "Tech Lead"
-    return f"{(jd_title or '').strip()} ({paren})"
+    return f"{base} ({paren})"
 
 
 # ---------------------------------------------------------------------------
@@ -266,40 +343,83 @@ def daily_cap_reached() -> bool:
 # ---------------------------------------------------------------------------
 
 ATS_RETRY_THRESHOLD = 80  # retry once if ATS match% comes in below this
+HR_RETRY_THRESHOLD = 80  # retry once if HR perspective score comes in below this
 
 
-def _build_retry_feedback(prev_pct: float, missing: dict) -> str:
-    """Format missing keywords as a retry hint the LLM can act on.
+def _build_retry_feedback(
+    prev_ats: float,
+    prev_hr: float,
+    missing: dict,
+    weakest_areas: list,
+) -> str:
+    """Compose a retry hint that addresses whichever signal(s) tripped.
 
-    Required keywords lead, then preferred, then soft. Capped at 30 terms.
-    Tells the LLM to (a) weave terms into bullets/skills where natural, or
-    (b) drop them into the 'Additional Tools and Technologies' adjacency
-    tail when natural placement isn't possible but adjacency holds.
+    Two independent sections: keyword density (ATS) and content quality
+    (HR). Only the failing dimensions are mentioned, so the LLM doesn't
+    get noisy feedback. Either or both can fire.
     """
-    flat: list[str] = []
-    for tier in ("required", "preferred", "soft"):
-        for kw in missing.get(tier) or []:
-            if kw and kw not in flat:
-                flat.append(kw)
-    if not flat:
-        return (
-            f"Previous attempt scored {prev_pct}%, target is 80%. Increase "
-            "keyword density: weave more JD-named tools, domains, and "
-            "methodologies into highlights, bullets, and skills."
+    parts: list[str] = []
+
+    if prev_ats < ATS_RETRY_THRESHOLD:
+        flat: list[str] = []
+        for tier in ("required", "preferred", "soft"):
+            for kw in missing.get(tier) or []:
+                if kw and kw not in flat:
+                    flat.append(kw)
+        if flat:
+            parts.append(
+                f"ATS keyword match was {prev_ats}% (target: "
+                f"{ATS_RETRY_THRESHOLD}%+). These JD keywords did not surface "
+                f"in the resume:\n{', '.join(flat[:30])}.\n\n"
+                "For each missing keyword, decide:\n"
+                "1. Can you weave it naturally into a bullet, highlight, or "
+                "primary skill category? Do that, using the JD's exact spelling.\n"
+                "2. Otherwise, does it pass the adjacency test (would a "
+                "recruiter scanning the master tree believe Dheeraj has "
+                "touched it)? Add it to the 'Additional Skills and "
+                "Technologies' adjacency tail.\n"
+                "3. Otherwise, route it to tailoring_report.missing_signals "
+                "and keep it off the resume."
+            )
+        else:
+            parts.append(
+                f"ATS keyword match was {prev_ats}% (target: "
+                f"{ATS_RETRY_THRESHOLD}%+). Increase keyword density: weave "
+                "more JD-named tools, domains, and methodologies into "
+                "highlights, bullets, and skills."
+            )
+
+    if prev_hr < HR_RETRY_THRESHOLD:
+        weak = (
+            ", ".join(weakest_areas[:5])
+            if weakest_areas
+            else "specificity, metrics, JD-priority alignment"
         )
-    head = flat[:30]
-    return (
-        f"Previous attempt scored {prev_pct}%, target is 80%. These JD "
-        "keywords did not surface in the resume:\n" + ", ".join(head) + ".\n\n"
-        "For each missing keyword, decide:\n"
-        "1. Can you weave it naturally into a bullet, highlight, or primary "
-        "skill category? Do that, using the JD's exact spelling.\n"
-        "2. Otherwise, does it pass the adjacency test (would a recruiter "
-        "scanning the master tree believe Dheeraj has touched it)? Add it "
-        "to the 'Additional Tools and Technologies' skills tail.\n"
-        "3. Otherwise, route it to tailoring_report.missing_signals and "
-        "keep it off the resume."
-    )
+        parts.append(
+            f"HR perspective score was {prev_hr} (target: "
+            f"{HR_RETRY_THRESHOLD}+). The recruiter flagged these weak "
+            f"areas: {weak}.\n\n"
+            "Strengthen the resume:\n"
+            "- Lead the top 3 bullets per role with content that mirrors "
+            "the JD's top 2-3 priorities (use the JD's exact language for "
+            "the responsibility / outcome).\n"
+            "- Pull more bullets that contain numbers, percentages, scope "
+            "sizes, or named tools from the bullet pool. Avoid bullets that "
+            "describe activity without a measurable outcome.\n"
+            "- Tighten the summary so sentence 1 leads with the JD target "
+            "role and the closing sentence states a concrete value Dheeraj "
+            "brings to the named target company.\n"
+            "- For EM track: highlights must be quantified achievements, "
+            "not generic platitudes."
+        )
+
+    return "\n\n".join(parts)
+
+
+def _combined_score(match: dict, hr: dict) -> float:
+    """Single number used to choose between attempts. Plain sum so a big
+    ATS gain doesn't mask a big HR drop and vice versa."""
+    return float(match.get("match_pct") or 0) + float(hr.get("hr_score") or 0)
 
 
 def _generate_payload(
@@ -324,6 +444,11 @@ def _generate_payload(
         user=user,
         model=model,
         max_tokens=8192,
+        # Sonnet at 8192 max_tokens with a long JD + 14k-token system prompt
+        # routinely runs 60-90s. The default 60s httpx timeout was failing
+        # background-executor generations as silent ReadTimeouts. 240s gives
+        # comfortable headroom without holding the thread forever.
+        timeout=240.0,
         cache_system=True,
     )
     return prompts.parse_response(raw)
@@ -392,13 +517,27 @@ def generate_resume(
         }
     ]
 
-    # 3. Retry once if ATS is low; keep whichever attempt scores higher.
-    if (match.get("match_pct") or 0) < ATS_RETRY_THRESHOLD:
-        feedback = _build_retry_feedback(match.get("match_pct") or 0, match.get("missing") or {})
+    # 3. Retry once if EITHER ATS or HR is below threshold. The retry feedback
+    # addresses whichever signal(s) failed; the kept attempt is the one with
+    # the higher combined ATS+HR score (so we don't trade HR quality for ATS
+    # keyword padding or vice versa).
+    ats_low = (match.get("match_pct") or 0) < ATS_RETRY_THRESHOLD
+    hr_low = (hr.get("hr_score") or 100) < HR_RETRY_THRESHOLD
+    if ats_low or hr_low:
+        feedback = _build_retry_feedback(
+            match.get("match_pct") or 0,
+            hr.get("hr_score") or 0,
+            match.get("missing") or {},
+            hr.get("weakest_areas") or [],
+        )
+        reasons = []
+        if ats_low:
+            reasons.append(f"ats={match.get('match_pct')}<{ATS_RETRY_THRESHOLD}")
+        if hr_low:
+            reasons.append(f"hr={hr.get('hr_score')}<{HR_RETRY_THRESHOLD}")
         log.info(
-            "[retry] regenerating once (ats=%s < %s); feedback: %s",
-            match.get("match_pct"),
-            ATS_RETRY_THRESHOLD,
+            "[retry] regenerating once (%s); feedback: %s",
+            " & ".join(reasons),
             feedback[:200],
         )
         try:
@@ -419,7 +558,7 @@ def generate_resume(
                 hr2.get("hr_score"),
                 cache_key,
             )
-            keep_retry = (match2.get("match_pct") or 0) > (match.get("match_pct") or 0)
+            keep_retry = _combined_score(match2, hr2) > _combined_score(match, hr)
             attempts[0]["kept"] = not keep_retry
             attempts.append(
                 {
@@ -472,6 +611,152 @@ def generate_resume(
     tailoring = payload.get("tailoring_report") or {}
     tailoring["scores"] = scores
     return output_path, tailoring
+
+
+def refine_resume(
+    jd_title: str,
+    jd_company: str,
+    jd_text: str,
+    model: str | None = None,
+    location: str = "",
+) -> tuple[Path, dict]:
+    """User-triggered refinement: read the existing scores sidecar, build
+    explicit feedback from prior ATS/HR/missing/weakest_areas, run ONE more
+    Sonnet attempt with that feedback, and overwrite the .docx + sidecar
+    only if combined ATS+HR improved.
+
+    Why this exists: the in-pipeline retry runs once per generation and
+    sometimes regresses (especially when fixing HR weak areas drops ATS
+    keywords). This is the manual escape hatch — same comparison rule, but
+    the user gets to pull the trigger after seeing the scores.
+
+    Raises FileNotFoundError if no prior resume exists for the given job.
+    """
+    output_path = expected_resume_path(jd_title, jd_company, location)
+    if not output_path.exists():
+        raise FileNotFoundError(
+            f"No existing resume to refine at {output_path.name}. Generate it first."
+        )
+    sidecar = output_path.with_suffix(".scores.json")
+    if not sidecar.exists():
+        raise FileNotFoundError(
+            f"No scores sidecar at {sidecar.name}. Refine needs prior scores "
+            "to build feedback. Regenerate from scratch instead."
+        )
+
+    prior = json.loads(sidecar.read_text())
+    prior_match = prior.get("ats_match") or {}
+    prior_hr = prior.get("hr") or {}
+    prior_attempts = list(prior.get("attempts") or [])
+    track = prior.get("track") or detect_track(jd_title)
+
+    # Build the same retry feedback the in-pipeline retry would build,
+    # using the prior numbers so the LLM has the full context for what's
+    # missing and what HR flagged as weak.
+    prev_ats = float(prior_match.get("match_pct") or 0)
+    prev_hr = float(prior_hr.get("hr_score") or 0)
+    feedback = _build_retry_feedback(
+        prev_ats,
+        prev_hr,
+        prior_match.get("missing") or {},
+        prior_hr.get("weakest_areas") or [],
+    )
+    log.info(
+        "[refine] starting (prior ats=%s hr=%s); feedback: %s",
+        prev_ats,
+        prev_hr,
+        feedback[:200],
+    )
+
+    # Re-extract keywords using the existing cache so we score the new
+    # attempt against the same keyword universe as the prior.
+    cache_key = f"{jd_company}|{jd_title}"
+    keywords = prior.get("keywords") or extract_keywords(jd_text or "", cache_key)
+
+    model = model or os.environ.get("GENERATION_MODEL", "anthropic/claude-sonnet-4.5")
+    payload = _generate_payload(
+        model,
+        jd_title,
+        jd_company,
+        jd_text,
+        track=track,
+        keywords=keywords,
+        retry_feedback=feedback,
+    )
+    resume = _resume_from_llm(payload, jd_title, track)
+    match, hr = _score(resume, keywords, jd_title, jd_company, jd_text)
+
+    new_combined = _combined_score(match, hr)
+    prior_combined = prev_ats + prev_hr
+    log.info(
+        "[refine] new ats=%s hr=%s (combined=%s) vs prior combined=%s",
+        match.get("match_pct"),
+        hr.get("hr_score"),
+        new_combined,
+        prior_combined,
+    )
+
+    refinement_record = {
+        "ats_pct": match.get("match_pct"),
+        "hr_score": hr.get("hr_score"),
+        "kept": new_combined > prior_combined,
+        "refinement": True,
+    }
+
+    # Mark all prior attempts as not-kept; the latest decision below picks one.
+    for a in prior_attempts:
+        a["kept"] = False
+
+    if new_combined > prior_combined:
+        # Refinement won — overwrite docx + scores
+        build_docx(resume, output_path)
+        new_attempts = prior_attempts + [refinement_record]
+        scores = {
+            "ats_match": match,
+            "hr": hr,
+            "keywords": keywords,
+            "conditional_cert": payload.get("conditional_cert")
+            or prior.get("conditional_cert")
+            or "cua",
+            "track": track,
+            "attempts": new_attempts,
+        }
+        sidecar.write_text(json.dumps(scores, indent=2))
+        mirror_to_public(output_path)
+        if sidecar.exists():
+            mirror_to_public(sidecar)
+        log.info("[refine] kept refined attempt — wrote %s", output_path.name)
+        tailoring = payload.get("tailoring_report") or {}
+        tailoring["scores"] = scores
+        tailoring["refinement_kept"] = True
+        return output_path, tailoring
+
+    # Refinement didn't help — keep prior. Restore the kept flag on the
+    # last prior attempt so the sidecar still shows which attempt is on disk.
+    if prior_attempts:
+        # Whichever was originally kept stays kept. Find it.
+        original_kept_idx = next(
+            (i for i, a in enumerate(prior.get("attempts") or []) if a.get("kept")),
+            len(prior_attempts) - 1,
+        )
+        for i, a in enumerate(prior_attempts):
+            a["kept"] = i == original_kept_idx
+    new_attempts = prior_attempts + [refinement_record]
+    scores = dict(prior)
+    scores["attempts"] = new_attempts
+    sidecar.write_text(json.dumps(scores, indent=2))
+    mirror_to_public(sidecar)
+    log.info("[refine] refinement did not improve combined score — kept prior")
+    return output_path, {
+        "scores": scores,
+        "refinement_kept": False,
+        "message": (
+            f"Refinement scored {match.get('match_pct')}/{hr.get('hr_score')} "
+            f"(combined {new_combined:.0f}); prior was "
+            f"{prev_ats:.0f}/{prev_hr:.0f} (combined {prior_combined:.0f}). "
+            "Kept prior."
+        ),
+    }
 
 
 def autogen_resume_if_missing(

@@ -15,6 +15,7 @@ from .pipeline import (
     existing_resume_path,
     expected_resume_path,
     generate_resume,
+    refine_resume,
     today_resume_count,
 )
 

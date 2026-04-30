@@ -41,7 +41,7 @@ Trim to 10 to 14 lines per JD; reorder so the categories the JD cares about most
 
 **Languages:** TypeScript, JavaScript (ES2023), Go, Python, HTML5, CSS3, SQL, GraphQL, Bash, C#, Java
 
-**Frontend Frameworks & Libraries:** React 18, Next.js 14 (App Router, Server Actions, RSC, ISR, SSR, SSG), React Server Components, Angular (2 through 19), AngularJS, Redux, Redux Toolkit, TanStack Query, Zustand, RxJS, NgRx, Vue.js, Svelte, jQuery, Knockout.js, Handlebars, Web Components, Lit, Stencil, Solidity, web3
+**Frontend Frameworks & Libraries:** React 18, Next.js 14 (App Router, Server Actions, RSC, ISR, SSR, SSG), React Server Components, Angular (2 through 20), AngularJS, Redux, Redux Toolkit, TanStack Query, Zustand, RxJS, NgRx, Vue.js, Svelte, jQuery, Knockout.js, Handlebars, Web Components, Lit, Stencil, Solidity, web3
 
 **Build Tools, Bundlers & Monorepos:** Vite, Webpack 5, Turbopack, Rollup, esbuild, Module Federation, Nx, Turborepo, Lerna, pnpm workspaces, Yarn workspaces, Grunt, Gulp, Babel, SWC, TypeScript Project References
 
@@ -114,8 +114,9 @@ _Own the React and TypeScript micro-frontend platform powering the consumer-faci
 
 #### Management track
 
-- Led front-end architecture and program strategy, partnering with 3 cross-functional teams
+- Led engineering direction across 3 product teams, owning architecture, roadmap, and quarterly investment reviews
 - Directed governance for 10+ major launches with 100% on-time delivery and on-budget execution
+- Led front-end architecture and program strategy, partnering with 3 cross-functional teams
 - Redesigned front-end architecture and developer tooling, improving scalability and user satisfaction by 50%
 - Increased project delivery efficiency by 35% through structured cross-functional coordination
 - Standardized React and micro front-end platform, reducing build cycles by 25%

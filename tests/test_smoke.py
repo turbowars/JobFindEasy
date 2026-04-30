@@ -171,6 +171,18 @@ def test_get_model_resolution_chain(clean_model_env, monkeypatch):
         ("Tech Lead, Frontend", "ic"),
         ("EM", "em"),
         ("Senior Backend Engineer", "ic"),
+        # Bug pinned: titles that pair "Manager" with "Engineering" in a
+        # non-contiguous shape ("Senior Manager, Platform Engineering")
+        # are still EM roles — Twilio, Stripe, and others phrase EM titles
+        # this way. The primary regex misses them because "engineering"
+        # lives in the qualifier after the comma.
+        ("Senior Manager, Platform Engineering - Secure Supply Chain", "em"),
+        ("Senior Manager, Engineering Tools", "em"),
+        ("Manager, Platform Engineering", "em"),
+        # Excluded: non-EM "Manager" roles whose JD body mentions engineering
+        ("Project Manager, Engineering Programs", "ic"),
+        ("Product Manager, Engineering Platform", "ic"),
+        ("Program Manager, Engineering Operations", "ic"),
     ],
 )
 def test_track_detection(title, expected):
@@ -232,21 +244,67 @@ def test_skills_validator_filters_to_master_tree():
 
 
 # ---------------------------------------------------------------------------
-# 8. Equifax title override per track
+# 8. Equifax title override per track + base-title strip for team qualifiers
 # ---------------------------------------------------------------------------
-def test_equifax_title_override_by_track():
-    """Equifax is the only role with a JD-flexed title. IC track gets
-    `(Tech Lead)`, EM track gets `(Engineering Lead)`."""
+@pytest.mark.parametrize(
+    "jd_title,track,expected",
+    [
+        # Bug pinned: user reported "Engineering Manager, Autonomous Freight
+        # Systems" was rendering on the Equifax line verbatim. The
+        # comma-suffix is Flexport's team name and must be stripped so the
+        # mirror reads as a plausible Equifax role rather than a copy of
+        # the target company's specific team.
+        (
+            "Engineering Manager, Autonomous Freight Systems",
+            "em",
+            "Engineering Manager (Engineering Lead)",
+        ),
+        (
+            "Engineering Manager, Identity Frontend",
+            "em",
+            "Engineering Manager (Engineering Lead)",
+        ),
+        (
+            "Director of Engineering, Developer Ecosystem",
+            "em",
+            "Director of Engineering (Engineering Lead)",
+        ),
+        # Other separators JDs use for the same kind of qualifier
+        ("Engineering Manager - Platform", "em", "Engineering Manager (Engineering Lead)"),
+        ("Engineering Manager | Growth", "em", "Engineering Manager (Engineering Lead)"),
+        ("Engineering Manager: Identity", "em", "Engineering Manager (Engineering Lead)"),
+        # Adjective prefixes (no separator) are part of the base title
+        ("Senior Engineering Manager", "em", "Senior Engineering Manager (Engineering Lead)"),
+        ("VP of Engineering", "em", "VP of Engineering (Engineering Lead)"),
+        # Bug pinned: user reported "Senior Manager, Platform Engineering -
+        # Secure Supply Chain" was rendering as "Senior Manager, Platform
+        # Engineering - Secure Supply Chain (Tech Lead)". Two errors stacked:
+        # (a) detect_track missed this title (it's EM, not IC), and
+        # (b) even after the comma strip, the base "Senior Manager" doesn't
+        # itself say engineering, so the Equifax mirror should normalize to
+        # the canonical "Engineering Manager".
+        (
+            "Senior Manager, Platform Engineering - Secure Supply Chain",
+            "em",
+            "Engineering Manager (Engineering Lead)",
+        ),
+        # Same normalization for any base that doesn't include engineering /
+        # director / VP / head phrasing
+        ("Senior Manager", "em", "Engineering Manager (Engineering Lead)"),
+        ("Lead, Platform", "em", "Engineering Manager (Engineering Lead)"),
+        # IC-track parenthetical — base title preserved verbatim
+        ("Staff Frontend Engineer", "ic", "Staff Frontend Engineer (Tech Lead)"),
+        ("Staff Software Engineer, Platform", "ic", "Staff Software Engineer (Tech Lead)"),
+    ],
+)
+def test_equifax_title_override_strips_team_qualifier(jd_title, track, expected):
+    """Equifax is the only role with a JD-flexed title. The qualifier after
+    the first separator (',' ':' '|' or ' - ') is stripped because it
+    refers to the target company's specific team / product, which Dheeraj
+    didn't have at Equifax."""
     from src.resume.pipeline import _equifax_title_override
 
-    assert (
-        _equifax_title_override("Staff Frontend Engineer", "ic")
-        == "Staff Frontend Engineer (Tech Lead)"
-    )
-    assert (
-        _equifax_title_override("Engineering Manager, Identity Frontend", "em")
-        == "Engineering Manager, Identity Frontend (Engineering Lead)"
-    )
+    assert _equifax_title_override(jd_title, track) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +365,8 @@ def test_adjacency_tail_cap_is_enforced():
         ("interviewing", False),  # CRITICAL: don't demote
         ("offer", False),  # CRITICAL: don't demote
         ("closed", False),
+        ("not_interested", False),  # terminal — Apply must not resurrect
+        ("no_sponsorship", False),  # terminal — Apply must not resurrect
     ],
 )
 def test_apply_action_preserves_progressed_states(monkeypatch, starting_status, should_transition):
@@ -368,15 +428,874 @@ def test_action_status_accepts_closed_with_reason(monkeypatch):
         lambda h, s, *a, **kw: set_status_calls.append((h, s, a, kw)),
     )
 
+    # Stub to_dataframe so the OOB badges fragment can render without hitting
+    # a real DB. An empty dataframe takes the "0 jobs" placeholder branch.
+    monkeypatch.setattr(db_module, "to_dataframe", lambda: pd.DataFrame())
+
     client = TestClient(web_app.app)
     r = client.post(
         "/actions/status/abc123",
         data={"status": "closed", "closed_reason": "ghosted"},
     )
-    assert r.status_code == 204
+    assert r.status_code == 200
     assert len(set_status_calls) == 1
     h, status, args, _ = set_status_calls[0]
     assert h == "abc123"
     assert status == "closed"
     # `closed_reason` is the second positional arg to db.set_status
     assert args == ("ghosted",)
+
+
+# ---------------------------------------------------------------------------
+# 27. /actions/status returns an HTMX OOB badges fragment so the sidebar
+#     refreshes instantly without polling.
+# ---------------------------------------------------------------------------
+def test_action_status_returns_oob_badges_fragment(monkeypatch):
+    """The 5s polling loop on the badges container was wasteful — most
+    ticks find nothing changed. The fix: every mutation that affects
+    badge counts appends an HTMX out-of-band swap fragment to its
+    response so the sidebar updates in the same round trip.
+
+    This test pins the contract: hitting /actions/status returns HTML
+    containing both ``id="badges"`` and ``hx-swap-oob="true"`` so HTMX
+    swaps the sidebar element automatically.
+    """
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from web import app as web_app
+
+    monkeypatch.setattr(db_module, "get_job", lambda h: {"hash": h, "status": "applied"})
+    monkeypatch.setattr(db_module, "set_status", lambda *a, **kw: None)
+    monkeypatch.setattr(db_module, "to_dataframe", lambda: pd.DataFrame())
+
+    client = TestClient(web_app.app)
+    r = client.post("/actions/status/abc123", data={"status": "shortlisted"})
+    assert r.status_code == 200
+    body = r.text
+    assert 'id="badges"' in body, "OOB fragment must target the #badges element"
+    assert 'hx-swap-oob="true"' in body, "OOB fragment must declare hx-swap-oob"
+
+
+# ---------------------------------------------------------------------------
+# 13. Retry-feedback handles HR-low even when ATS is fine
+# ---------------------------------------------------------------------------
+def test_retry_feedback_fires_for_low_hr_alone():
+    """Bug we just shipped: retry only triggered when ATS was low. A resume
+    with great keyword match but weak content (low HR score, e.g. bullets
+    without metrics) silently shipped without a second attempt. Now retry
+    fires when EITHER ATS or HR is below threshold."""
+    from src.resume.pipeline import (
+        ATS_RETRY_THRESHOLD,
+        HR_RETRY_THRESHOLD,
+        _build_retry_feedback,
+    )
+
+    # ATS is fine (above threshold), HR is low — feedback should focus on HR.
+    fb = _build_retry_feedback(
+        prev_ats=ATS_RETRY_THRESHOLD + 5,  # 85 — above threshold
+        prev_hr=HR_RETRY_THRESHOLD - 10,  # 70 — below threshold
+        missing={},
+        weakest_areas=["bullet specificity", "JD-priority alignment"],
+    )
+    assert "HR perspective score was 70" in fb
+    assert "weak areas: bullet specificity" in fb
+    # ATS section must NOT appear since ATS was fine
+    assert "ATS keyword match was" not in fb
+
+
+def test_retry_feedback_combines_ats_and_hr_when_both_low():
+    """When both signals fail, retry feedback covers both dimensions."""
+    from src.resume.pipeline import _build_retry_feedback
+
+    fb = _build_retry_feedback(
+        prev_ats=55,
+        prev_hr=68,
+        missing={"required": ["WebAuthn", "Passkeys"], "preferred": [], "soft": []},
+        weakest_areas=["readability"],
+    )
+    assert "ATS keyword match was 55%" in fb
+    assert "HR perspective score was 68" in fb
+    assert "WebAuthn" in fb
+    assert "readability" in fb
+
+
+# ---------------------------------------------------------------------------
+# 14. Combined-score keep logic — retry doesn't trade HR for ATS
+# ---------------------------------------------------------------------------
+def test_combined_score_picks_balanced_winner():
+    """Bug shape: previous logic kept the retry whenever ATS improved, even
+    if HR collapsed. e.g., attempt 1 = (ATS 70, HR 90) vs attempt 2 =
+    (ATS 85, HR 60) — the old keep_retry returned True (ATS improved).
+    The combined metric correctly keeps attempt 1 (sum 160 > 145)."""
+    from src.resume.pipeline import _combined_score
+
+    a1 = {"match_pct": 70}
+    h1 = {"hr_score": 90}
+    a2 = {"match_pct": 85}
+    h2 = {"hr_score": 60}
+    # attempt 1: 70 + 90 = 160. attempt 2: 85 + 60 = 145. Keep attempt 1.
+    assert _combined_score(a1, h1) > _combined_score(a2, h2)
+
+    # Symmetric case: attempt 2 strictly dominates → it wins.
+    assert _combined_score({"match_pct": 95}, {"hr_score": 92}) > _combined_score(
+        {"match_pct": 85}, {"hr_score": 88}
+    )
+
+
+# ---------------------------------------------------------------------------
+# 15. Domain-qualifier flexing rule is in the prompt
+# ---------------------------------------------------------------------------
+def test_prompt_allows_domain_qualifier_flexing():
+    """The bullet pool ships frontend-specific phrasing for Equifax (e.g.
+    'Led front-end architecture and program strategy'). For a generic EM
+    JD that's NOT specifically frontend, the prompt must tell the LLM to
+    substitute the domain qualifier (e.g., 'Led engineering architecture
+    and program strategy'). Without this rule, EM resumes for non-frontend
+    roles read as if Dheeraj only does frontend work."""
+    from src.resume.prompts import SYSTEM_PROMPT
+
+    assert "Domain qualifiers ARE flexible" in SYSTEM_PROMPT
+    # The rule must explicitly call out the front-end -> engineering swap
+    # for generic EM JDs (the exact case the user surfaced).
+    assert "front-end" in SYSTEM_PROMPT.lower() or "frontend" in SYSTEM_PROMPT.lower()
+    assert "Numbers, named tools" in SYSTEM_PROMPT
+    assert "are NEVER substituted" in SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------------------
+# 16. Cover letter refuses IC-track titles (no IC template defined yet)
+# ---------------------------------------------------------------------------
+def test_cover_letter_refuses_ic_track():
+    """The EM template ships first; the IC template is intentionally not
+    yet built. Pipeline must refuse IC-track titles loudly so the dashboard
+    can show an error rather than silently emitting an EM-framed letter
+    for a Staff Frontend Engineer JD."""
+    import pytest
+
+    from src.cover_letter import generate_cover_letter
+
+    with pytest.raises(ValueError, match="EM-track"):
+        generate_cover_letter(
+            jd_title="Staff Frontend Engineer",
+            jd_company="Vercel",
+            jd_text="...",
+        )
+
+
+# ---------------------------------------------------------------------------
+# 17. Cover letter end-to-end render — standard frame, locked text, bullet table
+# ---------------------------------------------------------------------------
+def test_cover_letter_render_assembles_locked_template(monkeypatch, tmp_path):
+    """Stubbed Sonnet response, end-to-end render. Verifies:
+    - frame check returns 'standard' for a people-leadership-dominant JD
+    - the locked STANDARD background paragraph renders (not hybrid)
+    - the three bullets the LLM selected (by signal key) render in order
+    - greeting falls back to 'Dear Hiring Manager,' when no name given
+    - `company_hook` and `company_fit_line` are omitted when empty
+    - subject line includes target title and company
+    - report contains frame + bullet_picks for caller introspection
+    """
+    import json as _json
+
+    from src.cover_letter import pipeline as cl_pipeline
+    from src.cover_letter.pipeline import generate_cover_letter
+    from src.resume import profile as resume_profile
+
+    fake_payload = {
+        "hiring_manager_name": "",
+        "opening_hook": "I'm applying for the Engineering Manager, Identity Frontend role you posted on Greenhouse.",
+        "company_hook": "",
+        "bullets": [
+            {"signal": "platform_devex"},
+            {"signal": "team_scaling"},
+            {"signal": "mentoring"},
+        ],
+        "company_fit_line": "",
+    }
+
+    def fake_chat(*args, **kwargs):
+        return _json.dumps(fake_payload)
+
+    monkeypatch.setattr(cl_pipeline, "chat", fake_chat)
+    monkeypatch.setattr(cl_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cl_pipeline, "mirror_to_public", lambda p: None)
+
+    # JD body laden with people-leadership signals so frame_check returns "standard"
+    people_heavy_jd = (
+        "We're hiring an Engineering Manager who will lead a growing team of "
+        "frontend engineers. You'll own hiring, performance management, "
+        "1:1s, growth plans, headcount, and roadmap ownership. You'll partner "
+        "with PM and design. Stakeholder communication and mentoring are core."
+    )
+
+    path, report = generate_cover_letter(
+        jd_title="Engineering Manager, Identity Frontend",
+        jd_company="Coinbase",
+        jd_text=people_heavy_jd,
+    )
+
+    assert path.exists() and path.suffix == ".docx"
+    assert "Engineering_Manager_Identity_Frontend_Coinbase" in path.name
+
+    # Report shape
+    assert report["frame"] == "standard"
+    assert [p["signal"] for p in report["bullet_picks"]] == [
+        "platform_devex",
+        "team_scaling",
+        "mentoring",
+    ]
+    assert report["company_hook_used"] is False
+    assert report["company_fit_line_used"] is False
+
+    text = report["plain_text"]
+    # Bug pinned: an early version added a "Re: <title> at <company>" subject
+    # line that wasn't in the master template. The greeting must be the
+    # first non-header content.
+    assert "Re:" not in text
+    assert text.lstrip().startswith("Dear Hiring Manager,")
+    # Standard background, NOT hybrid
+    assert resume_profile.COVER_LETTER_BACKGROUND_STANDARD in text
+    assert resume_profile.COVER_LETTER_BACKGROUND_HYBRID not in text
+    assert resume_profile.COVER_LETTER_BULLETS_LEAD in text
+    assert resume_profile.COVER_LETTER_SIGNOFF in text
+    assert "Dheeraj Sampath" in text
+    # All three picked-signal bullets must surface in order
+    for key in ("platform_devex", "team_scaling", "mentoring"):
+        bullet_text = resume_profile.COVER_LETTER_BULLETS_BY_SIGNAL[key]["bullet"]
+        assert bullet_text in text
+    # Background appears AFTER opening hook in the rendered order
+    assert text.index("I'm applying for the Engineering Manager") < text.index(
+        resume_profile.COVER_LETTER_BACKGROUND_STANDARD
+    )
+
+
+# ---------------------------------------------------------------------------
+# 18. Frame check — people / hybrid / ic_dominated bucketing
+# ---------------------------------------------------------------------------
+def test_frame_check_classifies_people_hybrid_ic():
+    """The frame_check function counts people-leadership phrases vs IC
+    technical-depth phrases per the skill rule:
+      people >= 2*ic   → standard
+      ic >= 2*people   → ic_dominated
+      otherwise        → hybrid
+    Bug shape: misclassifying a balanced JD as 'standard' would render the
+    standard people-manager opening for a player-coach role and undersell
+    the IC depth — the user surfaced this exact pitfall."""
+    from src.cover_letter.pipeline import frame_check
+
+    # People-leadership-dominant — should be standard
+    people_heavy = (
+        "Lead a team of engineers. Own hiring, performance management, "
+        "1:1s, headcount planning, growth plans, mentoring, and "
+        "stakeholder communication."
+    )
+    assert frame_check(people_heavy) == "standard"
+
+    # IC-dominant — should refuse
+    ic_heavy = (
+        "Hands-on individual contributor. Deep technical work on system "
+        "design, architecture reviews, code review, on-call rotations, "
+        "RFCs, and load-bearing production code. Specific framework "
+        "expertise required."
+    )
+    assert frame_check(ic_heavy) == "ic_dominated"
+
+    # Balanced — should be hybrid
+    balanced = (
+        "Hands-on engineering manager. You'll do code review, lead "
+        "architecture decisions, mentor engineers, and own the team "
+        "roadmap. Stakeholder partnership and on-call rotations both "
+        "expected."
+    )
+    assert frame_check(balanced) == "hybrid"
+
+
+# ---------------------------------------------------------------------------
+# 19. Cover letter refuses IC-dominated JDs even on EM-track titles
+# ---------------------------------------------------------------------------
+def test_cover_letter_refuses_ic_dominated_jd_body():
+    """An EM-titled JD whose body is IC-dominated should be flagged back per
+    the skill rule. Bug shape: the title check alone passed JDs through,
+    leading to EM-framed letters for what were really IC roles in disguise."""
+    import pytest
+
+    from src.cover_letter import generate_cover_letter
+
+    ic_dominated_jd = (
+        "Senior Engineering Manager - hands-on. Deep technical depth in "
+        "system design, architecture, code review, on-call. Load-bearing "
+        "production code. Individual contributor work on RFCs and "
+        "specific framework expertise."
+    )
+    with pytest.raises(ValueError, match="IC-dominated"):
+        generate_cover_letter(
+            jd_title="Senior Engineering Manager",
+            jd_company="SomeCo",
+            jd_text=ic_dominated_jd,
+        )
+
+
+# ---------------------------------------------------------------------------
+# 20. Hybrid frame swaps the background paragraph
+# ---------------------------------------------------------------------------
+def test_cover_letter_hybrid_frame_uses_hybrid_background(monkeypatch, tmp_path):
+    """Balanced JDs get the 40%-code/60%-leading opening. The renderer must
+    swap STANDARD for HYBRID when frame == 'hybrid'."""
+    import json as _json
+
+    from src.cover_letter import pipeline as cl_pipeline
+    from src.cover_letter.pipeline import generate_cover_letter
+    from src.resume import profile as resume_profile
+
+    fake_payload = {
+        "hiring_manager_name": "",
+        "opening_hook": "I'm applying for the Staff Engineering Manager role.",
+        "company_hook": "",
+        "bullets": [
+            {"signal": "end_to_end"},
+            {"signal": "platform_devex"},
+            {"signal": "mentoring"},
+        ],
+        "company_fit_line": "",
+    }
+    monkeypatch.setattr(cl_pipeline, "chat", lambda *a, **k: _json.dumps(fake_payload))
+    monkeypatch.setattr(cl_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cl_pipeline, "mirror_to_public", lambda p: None)
+
+    balanced_jd = (
+        "Hands-on engineering manager. You'll do code review, lead "
+        "architecture decisions, mentor engineers, and own the team "
+        "roadmap. On-call rotations and stakeholder partnership both "
+        "expected."
+    )
+    _, report = generate_cover_letter(
+        jd_title="Staff Engineering Manager",
+        jd_company="SomeCo",
+        jd_text=balanced_jd,
+    )
+    assert report["frame"] == "hybrid"
+    text = report["plain_text"]
+    assert resume_profile.COVER_LETTER_BACKGROUND_HYBRID in text
+    assert resume_profile.COVER_LETTER_BACKGROUND_STANDARD not in text
+
+
+# ---------------------------------------------------------------------------
+# 21. Bullet validator drops unknown signals + dedupes + backfills to 3
+# ---------------------------------------------------------------------------
+def test_cover_letter_bullets_validator_anchors_against_fabrication():
+    """The skill says 'do not invent bullets — pick from the table'. The
+    pipeline's signal-key validator must:
+      - drop unknown keys
+      - drop duplicates
+      - backfill to exactly 3 bullets so the renderer always has content
+    """
+    from src.cover_letter.pipeline import _bullets_from_llm
+
+    # LLM drift: one valid, one duplicate, one unknown — should still get 3
+    picks = _bullets_from_llm(
+        [
+            {"signal": "platform_devex"},
+            {"signal": "platform_devex"},  # duplicate — drop
+            {"signal": "made_this_up"},  # unknown — drop
+        ]
+    )
+    assert len(picks) == 3
+    signals = [p.signal for p in picks]
+    assert "platform_devex" in signals
+    assert "made_this_up" not in signals
+    assert len(set(signals)) == 3, "all three picks must be different signals"
+
+
+# ---------------------------------------------------------------------------
+# 22. refine_resume keeps prior when the new attempt scores worse
+# ---------------------------------------------------------------------------
+def test_refine_resume_keeps_prior_when_new_attempt_is_worse(monkeypatch, tmp_path):
+    """Bug shape: the in-pipeline retry sometimes regresses (HR fix drops
+    ATS keywords). The user's manual 'Refine' button must use the same
+    combined-score gate, so clicking it can NEVER make a working resume
+    worse — it either improves or it's a no-op."""
+    import json as _json
+
+    from src.resume import pipeline as r_pipeline
+    from src.resume.pipeline import expected_resume_path, refine_resume
+
+    # Set up a prior file pair: docx + sidecar with strong scores
+    monkeypatch.setattr(r_pipeline, "OUTPUT_DIR", tmp_path)
+    docx_path = expected_resume_path("EM Test", "AcmeCo", "Remote")
+    docx_path.write_bytes(b"placeholder docx bytes")  # docx_builder won't be called for prior
+    prior_scores = {
+        "ats_match": {
+            "match_pct": 85,
+            "missing": {"required": ["Kafka"], "preferred": [], "soft": []},
+            "matched": {},
+        },
+        "hr": {"hr_score": 88, "rationale": "ok", "weakest_areas": ["something"]},
+        "keywords": {"required": ["React"], "preferred": [], "soft": []},
+        "track": "em",
+        "attempts": [{"ats_pct": 85, "hr_score": 88, "kept": True}],
+    }
+    docx_path.with_suffix(".scores.json").write_text(_json.dumps(prior_scores))
+
+    # Stub LLM to return a payload that scores WORSE than prior
+    fake_payload = {
+        "summary": "Engineering Manager with 15+ years.",
+        "highlights": [],
+        "experience": [],
+        "skills": [],
+        "conditional_cert": "cua",
+        "tailoring_report": {},
+    }
+    monkeypatch.setattr(r_pipeline, "chat", lambda *a, **k: _json.dumps(fake_payload))
+    monkeypatch.setattr(
+        r_pipeline,
+        "match_keywords",
+        lambda *a, **k: {
+            "match_pct": 60,
+            "matched": {},
+            "missing": {"required": [], "preferred": [], "soft": []},
+        },
+    )
+    monkeypatch.setattr(
+        r_pipeline,
+        "hr_simulate",
+        lambda *a, **k: {"hr_score": 70, "rationale": "weaker", "weakest_areas": []},
+    )
+    monkeypatch.setattr(r_pipeline, "build_docx", lambda resume, path: None)
+    monkeypatch.setattr(r_pipeline, "mirror_to_public", lambda p: None)
+    monkeypatch.setattr(r_pipeline, "extract_keywords", lambda *a, **k: prior_scores["keywords"])
+
+    path, report = refine_resume(
+        jd_title="EM Test",
+        jd_company="AcmeCo",
+        jd_text="some JD",
+        location="Remote",
+    )
+    # Prior combined = 85+88=173; new combined = 60+70=130. Refinement loses.
+    assert report["refinement_kept"] is False, "should NOT keep a worse attempt"
+
+    # Sidecar was rewritten with the refinement record but kept-flag stays on prior
+    sidecar = _json.loads(docx_path.with_suffix(".scores.json").read_text())
+    refinement_records = [a for a in sidecar["attempts"] if a.get("refinement")]
+    assert len(refinement_records) == 1
+    assert refinement_records[0]["kept"] is False
+    # The original prior attempt should still be kept=True
+    non_refinement = [a for a in sidecar["attempts"] if not a.get("refinement")]
+    assert any(a["kept"] for a in non_refinement)
+
+
+def test_refine_resume_overwrites_when_new_attempt_is_better(monkeypatch, tmp_path):
+    """Mirror of the previous test — refinement DOES overwrite when combined
+    score improves. Verifies the .docx gets rewritten."""
+    import json as _json
+
+    from src.resume import pipeline as r_pipeline
+    from src.resume.pipeline import expected_resume_path, refine_resume
+
+    monkeypatch.setattr(r_pipeline, "OUTPUT_DIR", tmp_path)
+    docx_path = expected_resume_path("EM Test", "AcmeCo", "Remote")
+    docx_path.write_bytes(b"placeholder old bytes")
+    prior_scores = {
+        "ats_match": {
+            "match_pct": 60,
+            "missing": {"required": ["Kafka"], "preferred": [], "soft": []},
+            "matched": {},
+        },
+        "hr": {"hr_score": 65, "rationale": "weak", "weakest_areas": ["specificity"]},
+        "keywords": {"required": ["React"], "preferred": [], "soft": []},
+        "track": "em",
+        "attempts": [{"ats_pct": 60, "hr_score": 65, "kept": True}],
+    }
+    docx_path.with_suffix(".scores.json").write_text(_json.dumps(prior_scores))
+
+    fake_payload = {
+        "summary": "...",
+        "highlights": [],
+        "experience": [],
+        "skills": [],
+        "conditional_cert": "cua",
+        "tailoring_report": {},
+    }
+    monkeypatch.setattr(r_pipeline, "chat", lambda *a, **k: _json.dumps(fake_payload))
+    monkeypatch.setattr(
+        r_pipeline,
+        "match_keywords",
+        lambda *a, **k: {
+            "match_pct": 90,
+            "matched": {},
+            "missing": {"required": [], "preferred": [], "soft": []},
+        },
+    )
+    monkeypatch.setattr(
+        r_pipeline,
+        "hr_simulate",
+        lambda *a, **k: {"hr_score": 88, "rationale": "stronger", "weakest_areas": []},
+    )
+    docx_writes: list[bytes] = []
+    monkeypatch.setattr(
+        r_pipeline,
+        "build_docx",
+        lambda resume, path: docx_writes.append(b"new bytes"),
+    )
+    monkeypatch.setattr(r_pipeline, "mirror_to_public", lambda p: None)
+    monkeypatch.setattr(r_pipeline, "extract_keywords", lambda *a, **k: prior_scores["keywords"])
+
+    path, report = refine_resume(
+        jd_title="EM Test",
+        jd_company="AcmeCo",
+        jd_text="some JD",
+        location="Remote",
+    )
+    # Prior combined 60+65=125; new 90+88=178. Refinement wins.
+    assert report["refinement_kept"] is True
+    assert len(docx_writes) == 1, "build_docx should have been called once"
+
+    sidecar = _json.loads(docx_path.with_suffix(".scores.json").read_text())
+    refinement = [a for a in sidecar["attempts"] if a.get("refinement")][0]
+    assert refinement["kept"] is True
+    assert refinement["ats_pct"] == 90
+    assert refinement["hr_score"] == 88
+
+
+# ---------------------------------------------------------------------------
+# 24. /actions/refine-resume endpoint refuses when nothing to refine
+# ---------------------------------------------------------------------------
+def test_refine_resume_endpoint_refuses_when_no_prior_resume(monkeypatch):
+    """The 'Refine with feedback' button is only meaningful when a resume
+    + sidecar already exist on disk. The endpoint must return 409 (not 500
+    or silent submission) when the user's hash has no prior resume."""
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from web import app as web_app
+
+    monkeypatch.setattr(
+        db_module,
+        "get_job",
+        lambda h: {
+            "hash": h,
+            "title": "EM Z",
+            "company": "Nowhere",
+            "location": "",
+            "description": "x",
+        },
+    )
+    # Patch the resume-path helper so it returns a path that DOESN'T exist
+    nonexistent = web_app.expected_resume_path("EM Z", "Nowhere", "")
+    assert not nonexistent.exists(), "test setup expects no prior resume"
+
+    client = TestClient(web_app.app)
+    r = client.post("/actions/refine-resume/abc123")
+    assert r.status_code == 409
+    assert "no existing resume" in r.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# 25. Generations queue records job_hash so sidebar rows can deep-link
+# ---------------------------------------------------------------------------
+def test_submit_generation_records_job_hash(monkeypatch):
+    """The sidebar generations tray needs each row to carry the originating
+    job_hash so clicking a row jumps to that job's detail panel. Bug shape:
+    queue rows had only title+company, requiring the user to manually find
+    the row in the grid to open the detail pane."""
+    from src import state
+
+    # Stub the executor + the underlying generators so no real work runs
+    captured = {}
+
+    class _FakeFuture:
+        def done(self):
+            return True
+
+        def exception(self):
+            return None
+
+        def add_done_callback(self, cb):
+            cb(self)  # done synchronously — fire the cleanup callback
+
+    def _fake_submit(fn, *args, **kwargs):
+        captured["called_with"] = (fn.__name__, args, kwargs)
+        return _FakeFuture()
+
+    class _FakeExec:
+        def submit(self, fn, *args, **kwargs):
+            return _fake_submit(fn, *args, **kwargs)
+
+    monkeypatch.setattr(state, "get_executor", lambda: _FakeExec())
+
+    # Reset the in-memory log so this test sees only its own entry
+    with state._GENERATIONS_LOCK:
+        state._GENERATIONS.clear()
+
+    state.submit_generation(
+        "resume",
+        "Engineering Manager",
+        "Coinbase",
+        "JD body",
+        location="Remote - USA",
+        job_hash="abc123def456",
+    )
+
+    snapshot = state.get_generations()
+    assert len(snapshot) == 1
+    record = snapshot[0]
+    assert record["kind"] == "resume"
+    assert record["job_hash"] == "abc123def456", (
+        "submit_generation must persist job_hash on the record so the sidebar "
+        "tray can open the detail panel for that job on click"
+    )
+    assert record["title"] == "Engineering Manager"
+    assert record["company"] == "Coinbase"
+
+
+# ---------------------------------------------------------------------------
+# 26. Cover letter autogen skips IC-track titles silently (no IC template yet)
+# ---------------------------------------------------------------------------
+def test_autogen_cover_letter_skips_ic_track(monkeypatch):
+    """Wiring autogen_cover_letter_if_missing into the score loop must NOT
+    crash on Staff Frontend Engineer / Tech Lead / etc. titles. The cover
+    letter pipeline only handles EM track today; the autogen helper must
+    skip those jobs silently and return None so the loop keeps running."""
+    from src.cover_letter.pipeline import autogen_cover_letter_if_missing
+
+    # No need to stub generate_cover_letter — the helper short-circuits
+    # before ever calling it because detect_track returns "ic".
+    result = autogen_cover_letter_if_missing(
+        jd_title="Staff Frontend Engineer",
+        jd_company="Vercel",
+        jd_text="...",
+    )
+    assert result is None, "IC-track jobs must not produce a cover letter"
+
+
+# ---------------------------------------------------------------------------
+# 27. Bundle download zips both artifacts and 404s when one is missing
+# ---------------------------------------------------------------------------
+def test_bundle_download_streams_zip_with_both_artifacts(monkeypatch, tmp_path):
+    """The 'Download both' button hits /files/bundle/{hash}. Server must
+    return a ZIP containing both files when they exist, and 404 with a
+    clear message when one is missing — so the user knows to generate the
+    missing one rather than getting an empty / corrupt zip."""
+    import io
+    import zipfile
+
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from web import app as web_app
+
+    job = {
+        "hash": "abc123",
+        "title": "Engineering Manager",
+        "company": "Coinbase",
+        "location": "Remote",
+        "description": "x",
+        "status": "applying",
+    }
+    monkeypatch.setattr(db_module, "get_job", lambda h: job)
+
+    # Create real placeholder files at the canonical paths
+    resume_path = web_app.expected_resume_path(job["title"], job["company"], job["location"])
+    cover_path = web_app.expected_cover_letter_path(job["title"], job["company"])
+    resume_path.parent.mkdir(parents=True, exist_ok=True)
+    resume_path.write_bytes(b"resume bytes")
+    cover_path.write_bytes(b"cover bytes")
+
+    try:
+        client = TestClient(web_app.app)
+        r = client.get("/files/bundle/abc123")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "application/zip"
+        assert "_bundle.zip" in r.headers["content-disposition"]
+        # Verify the zip really contains both files
+        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+            names = set(zf.namelist())
+        assert resume_path.name in names
+        assert cover_path.name in names
+
+        # Now delete the cover letter and verify 404 with named missing file
+        cover_path.unlink()
+        r = client.get("/files/bundle/abc123")
+        assert r.status_code == 404
+        assert "cover letter" in r.text.lower()
+    finally:
+        resume_path.unlink(missing_ok=True)
+        cover_path.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# 28. Failed generations clear the pending marker (no infinite "Generating…")
+# ---------------------------------------------------------------------------
+def test_failed_generation_clears_pending_marker(monkeypatch):
+    """Bug user surfaced: dashboard clicked Generate, executor caught an
+    exception, but the artifacts panel polled "Generating resume…" forever
+    because the only marker-cleanup path was 'file appears on disk'. Add a
+    done-callback so the marker resolves regardless of outcome and the
+    user-visible polling can move on (and the failure logs loud)."""
+    import time
+
+    from src import state
+
+    # Stub the executor so we control the future
+    captured_callback = {}
+
+    class _FakeFuture:
+        def __init__(self, err):
+            self._err = err
+            self._cbs = []
+
+        def done(self):
+            return True
+
+        def exception(self):
+            return self._err
+
+        def add_done_callback(self, cb):
+            captured_callback["cb"] = cb
+            self._cbs.append(cb)
+            cb(self)  # synchronous fire — already done
+
+    err = RuntimeError("simulated openrouter blip")
+
+    class _FakeExec:
+        def submit(self, fn, *args, **kwargs):
+            return _FakeFuture(err)
+
+    monkeypatch.setattr(state, "get_executor", lambda: _FakeExec())
+
+    state.mark_pending("abc123", "resume")
+    assert state.pending_started_at("abc123", "resume") is not None
+
+    state.submit_generation(
+        "resume",
+        "EM",
+        "TestCo",
+        "jd",
+        location="Remote",
+        job_hash="abc123",
+    )
+
+    # The done callback should have fired synchronously and cleared the marker
+    assert state.pending_started_at("abc123", "resume") is None, (
+        "pending marker must clear when the future resolves, even on failure"
+    )
+
+    # And refine's marker uses the resume key (refine writes the resume),
+    # so a failed refine should clean up the resume pending marker too.
+    state.mark_pending("xyz789", "resume")
+    state.submit_generation(
+        "refine",
+        "EM",
+        "TestCo",
+        "jd",
+        location="Remote",
+        job_hash="xyz789",
+    )
+    assert state.pending_started_at("xyz789", "resume") is None
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Prefilter title matching — pins the EM + IC + Architect track scope.
+#
+# Bug surfaced 2026-04-30: the original ruleset was EM-only, so the user's
+# entire IC track ("Staff Software Engineer, Frontend Engineering" etc.)
+# was getting prefilter-rejected before reaching the scorer. 8,678 jobs
+# silently fell through "no title match and weak signals". This pins the
+# expanded scope so it can't regress.
+# ────────────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize(
+    "title",
+    [
+        # EM track
+        "Engineering Manager",
+        "Engineering Manager, Frontend Platform",
+        "Senior Engineering Manager",
+        "Director of Engineering",
+        "Director, Engineering",
+        "Head of Engineering",
+        "VP of Engineering",
+        "Senior Manager, Software Engineering",
+        "Frontend Engineering Lead",
+        "Tech Lead Manager",
+        # IC: Staff / Principal
+        "Staff Software Engineer, Frontend Engineering",
+        "Staff Frontend Engineer",
+        "Staff Product Engineer",
+        "Staff Full-Stack Engineer",
+        "Senior Staff Frontend Engineer",
+        "Principal Frontend Engineer",
+        "Principal Software Engineer",
+        "Principal Web Platform Engineer",
+        # IC: Senior
+        "Senior Frontend Engineer",
+        "Senior Front-end Engineer",
+        "Senior Full-Stack Engineer",
+        "Senior Product Engineer",
+        # Plain Full-Stack (any seniority — user explicitly allowed)
+        "Full Stack Engineer",
+        "Full-Stack Engineer",
+        # AI / Forward Deployed (user explicitly allowed)
+        "AI Engineer",
+        "Senior AI Engineer",
+        "Forward Deployed Engineer",
+        "Staff Forward-Deployed Engineer",
+        # Architect track (user explicitly allowed)
+        "Tech Architect",
+        "Technical Architect",
+        "Web Architect",
+        "React Architect",
+        "Frontend Architect",
+        "Front-End Architect",
+        "Senior Frontend Architect",
+        "Lead Web Architect",
+        # Tech Lead variants
+        "Frontend Tech Lead",
+        "Tech Lead, Frontend",
+        "Software Engineer Tech Lead",
+        "Web Platform Engineer",
+    ],
+)
+def test_prefilter_title_good_accepts_em_ic_and_architect_titles(title):
+    from src.enrichment.prefilter import TITLE_GOOD
+
+    assert TITLE_GOOD.search(title), f"TITLE_GOOD should match {title!r}"
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        # Out-of-scope IC junior/mid
+        "Junior Frontend Developer",
+        "Software Engineer Intern",
+        # Adjacent-but-different roles
+        "Recruiter",
+        "Sales Engineer",
+        "Solutions Engineer",
+        "Customer Engineer",
+        "Product Designer",
+        "UX Designer",
+        "Data Scientist",
+        "ML Engineer",
+        "Machine Learning Engineer",
+        "QA Engineer",
+        "Test Engineer",
+        "Site Reliability Engineer",
+        "DevOps Engineer",
+        "Security Engineer",
+        "Embedded Engineer",
+        "Firmware Engineer",
+        "Technical Writer",
+        "Product Manager",
+        "Program Manager",
+        "Project Manager",
+        "TPM",
+    ],
+)
+def test_prefilter_title_bad_rejects_out_of_scope_titles(title):
+    from src.enrichment.prefilter import TITLE_BAD, prefilter
+
+    # Either TITLE_BAD catches it, or end-to-end prefilter drops it.
+    if TITLE_BAD.search(title):
+        return
+    passed, _reason, _sp = prefilter(title, description="")
+    assert not passed, f"prefilter should drop {title!r}"

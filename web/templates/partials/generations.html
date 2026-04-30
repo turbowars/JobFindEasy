@@ -13,6 +13,7 @@
   </div>
 
   <div class="space-y-1 max-h-72 overflow-y-auto pr-1">
+  {% set _kind_labels = {'resume': 'Resume', 'cover': 'Cover', 'refine': 'Refine'} %}
   {% for g in (gens|reverse|list)[:10] %}
     {% set fut = g.future %}
     {% set done = fut.done() %}
@@ -20,10 +21,34 @@
     {% set elapsed = (now - g.started_at) | int %}
     {% set border_cls = 'border-l-error' if failed else ('border-l-base-300/40' if done else 'border-l-accent') %}
     {% set text_cls = 'text-ink' if not done else 'text-ink-3' %}
+    {# Rows with a job_hash deep-link to the detail pane on click. Older
+       generations queued before job_hash plumbing was added stay non-clickable. #}
+    {% set is_clickable = g.job_hash and g.job_hash != '' %}
 
-    <div class="border-l-2 {{ border_cls }} pl-2 py-0.5 {{ text_cls }}">
+    {# Notification hook: data-generation-id is the unique uuid prefix; the
+       client-side notifier in app.js fires a Chrome Notification on each
+       NEW transition to data-state="done" / "failed" (and dedupes via the id). #}
+    {% set state = 'failed' if failed else ('done' if done else 'running') %}
+    {% if is_clickable %}
+    <div class="border-l-2 {{ border_cls }} pl-2 py-0.5 {{ text_cls }} cursor-pointer hover:bg-base-200/40 rounded-r transition-colors"
+         data-action="open-job-detail"
+         data-hash="{{ g.job_hash }}"
+         data-generation-id="{{ g.id }}"
+         data-generation-state="{{ state }}"
+         data-generation-kind="{{ g.kind }}"
+         data-generation-title="{{ g.title }}"
+         data-generation-company="{{ g.company }}"
+         title="Open {{ g.title }} at {{ g.company }}">
+    {% else %}
+    <div class="border-l-2 {{ border_cls }} pl-2 py-0.5 {{ text_cls }}"
+         data-generation-id="{{ g.id }}"
+         data-generation-state="{{ state }}"
+         data-generation-kind="{{ g.kind }}"
+         data-generation-title="{{ g.title }}"
+         data-generation-company="{{ g.company }}">
+    {% endif %}
       <div class="text-[11px] flex items-center justify-between gap-1">
-        <span class="font-medium">{% if g.kind == 'resume' %}Resume{% else %}Cover{% endif %}</span>
+        <span class="font-medium">{{ _kind_labels.get(g.kind, g.kind|capitalize) }}</span>
         <span class="text-ink-3 truncate">{{ g.company }}</span>
       </div>
       <div class="text-[10px] text-ink-3 truncate" title="{{ g.title }}">{{ g.title }}</div>

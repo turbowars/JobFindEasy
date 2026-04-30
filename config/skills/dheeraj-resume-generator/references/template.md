@@ -60,7 +60,7 @@ linkedin.com/in/evolvingdx  |  dheerajsampath.com  |  github.com/turbowars
 #### TA Digital · Principal Engineer · Hyderabad, India · Feb 2018 – Sep 2019
 
 - Everything on the role header line: **[LOCKED]**
-- Bullets: **[GENERATED]** — 3 to 4 (Engineering, Fitbit or Bose based on JD fit) or 3 to 4 (Management).
+- Bullets: **[GENERATED]** — 3 to 4 (Engineering, Fitbit or Bose based on JD fit) or 2 to 3 (Management).
 
 ---
 

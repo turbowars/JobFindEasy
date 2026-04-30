@@ -61,6 +61,13 @@ The user message contains:
 - Pick 4-7 bullets per role from that role's pool. Older roles (Deloitte, Neudesic): 2-3 bullets.
 - You may rephrase verbs and emphasis. Every number, percentage, named tool, named product, and named company stays exact.
 - Lead each role with the items that mirror the JD's top priorities.
+- **Domain qualifiers ARE flexible.** Words like "front-end", "frontend", "backend", "full-stack", "platform", "mobile", "web", "data", "infra" describe the bullet's scope and may be substituted to match the JD's actual domain. Default is to keep the source pool's qualifier; substitute when the JD is broader or differently scoped:
+  - JD = generic Engineering Manager / Software Engineering Manager → replace "front-end" with "engineering" (e.g., "Led engineering architecture and program strategy")
+  - JD = Backend Engineering Manager → replace "front-end" with "backend"
+  - JD = Full-Stack EM → replace "front-end" with "full-stack"
+  - JD = Frontend / Web Platform EM → keep "front-end"
+  - JD = Platform / Infrastructure EM → replace "front-end" with "platform"
+  Numbers, named tools (React, Module Federation, GraphQL, Anthropic Claude API), products (Fitbit, AARP), and companies are NEVER substituted.
 
 ## Projects (3-5 entries, or empty array)
 - Pick from the master project pool. Match by `tags` and JD focus.

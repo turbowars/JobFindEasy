@@ -29,8 +29,8 @@ import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 
-from .generate.cover_letter import generate_cover_letter
-from .resume import generate_resume
+from .cover_letter import generate_cover_letter
+from .resume import generate_resume, refine_resume
 
 log = logging.getLogger(__name__)
 
@@ -72,15 +72,60 @@ def get_generations() -> list[dict]:
 
 
 def submit_generation(
-    kind: str, title: str, company: str, jd_text: str, *, location: str = ""
+    kind: str,
+    title: str,
+    company: str,
+    jd_text: str,
+    *,
+    location: str = "",
+    job_hash: str = "",
 ) -> Future:
-    """Queue a resume or cover letter generation on the shared executor.
-    `kind` is "resume" or "cover".
+    """Queue a resume / cover letter / refinement on the shared executor.
+
+    `kind`:
+      - "resume"     — fresh end-to-end resume generation
+      - "cover"      — cover letter generation
+      - "refine"     — feedback-driven refinement of an existing resume
+                       (reads prior scores sidecar; only overwrites if the
+                        new combined ATS+HR score improves)
+
+    `job_hash` is stored on the generation record so the sidebar tray can
+    deep-link each row to the originating job's detail panel.
     """
     if kind == "resume":
         fut = get_executor().submit(generate_resume, title, company, jd_text, location=location)
-    else:
+    elif kind == "refine":
+        fut = get_executor().submit(refine_resume, title, company, jd_text, location=location)
+    elif kind == "cover":
         fut = get_executor().submit(generate_cover_letter, title, company, jd_text)
+    else:
+        raise ValueError(f"unknown generation kind: {kind!r}")
+
+    # Always clear the pending marker when the future resolves, regardless
+    # of success or failure. Without this, a silently-failed generation
+    # leaves the artifacts panel polling "Generating resume…" forever
+    # because the only cleanup path was "file appears on disk". Refine
+    # writes the resume marker (state.mark_pending(job_hash, "resume"))
+    # so we map kind="refine" -> the resume marker for cleanup too.
+    pending_kind = "resume" if kind == "refine" else kind
+    if job_hash:
+
+        def _on_done(f, hash=job_hash, k=pending_kind, label=kind, t=title, c=company):
+            clear_pending(hash, k)
+            err = f.exception()
+            if err is not None:
+                # Log loud — the future swallowed the exception inside the
+                # worker thread; this is the user's only visible signal.
+                log.error(
+                    "[%s] generation FAILED for %s @ %s: %s",
+                    label,
+                    t,
+                    c,
+                    err,
+                )
+
+        fut.add_done_callback(_on_done)
+
     with _GENERATIONS_LOCK:
         _GENERATIONS.append(
             {
@@ -88,6 +133,7 @@ def submit_generation(
                 "kind": kind,
                 "title": title,
                 "company": company,
+                "job_hash": job_hash,
                 "future": fut,
                 "started_at": time.time(),
             }
@@ -141,6 +187,7 @@ def _autoscrape_loop_factory():
     import json
 
     from . import db
+    from .cover_letter import autogen_cover_letter_if_missing
     from .enrichment.llm_scorer import compute_tier, make_client, score_job
     from .enrichment.prefilter import prefilter as run_prefilter
     from .resume import autogen_resume_if_missing
@@ -225,6 +272,15 @@ def _autoscrape_loop_factory():
                         )
                         if path:
                             out["auto_resumes"] += 1
+                            # Pair with a cover letter for top fits. Helper
+                            # skips IC-track jobs and silently swallows
+                            # errors so the loop keeps going.
+                            autogen_cover_letter_if_missing(
+                                j["title"],
+                                j["company"],
+                                j["description"] or "",
+                                location=j.get("location") or "",
+                            )
         except Exception as e:
             out["error"] = str(e)
         return out
@@ -315,7 +371,52 @@ def submit_all_missing_strong_fits(min_score: int = 80) -> int:
         path = existing_resume_path(title, company, location)
         if path.exists():
             continue
-        submit_generation("resume", title, company, r.get("description") or "", location=location)
+        submit_generation(
+            "resume",
+            title,
+            company,
+            r.get("description") or "",
+            location=location,
+            job_hash=r["hash"],
+        )
         mark_pending(r["hash"], "resume")
+        submitted += 1
+    return submitted
+
+
+def submit_all_missing_strong_fit_cover_letters(min_score: int = 80) -> int:
+    """Queue cover letter generation for every strong-fit job that doesn't
+    already have one on disk. Skips jobs whose JD title routes to IC track
+    (cover letter pipeline only supports EM today). Returns count submitted.
+    """
+    from . import db
+    from .cover_letter import expected_cover_letter_path
+    from .resume.pipeline import detect_track
+
+    df = db.to_dataframe()
+    if df.empty:
+        return 0
+    strong = df[(df["score_total"].fillna(0) >= min_score) & (df["tier"] == "strong")].sort_values(
+        "score_total", ascending=False
+    )
+    submitted = 0
+    for _, r in strong.iterrows():
+        title, company = r["title"], r["company"]
+        path = expected_cover_letter_path(title, company)
+        if path.exists():
+            continue
+        # Skip IC-track titles silently — generate_cover_letter would raise
+        # ValueError for them, which the executor would log but not surface.
+        if detect_track(title) != "em":
+            continue
+        submit_generation(
+            "cover",
+            title,
+            company,
+            r.get("description") or "",
+            location=r.get("location") or "",
+            job_hash=r["hash"],
+        )
+        mark_pending(r["hash"], "cover")
         submitted += 1
     return submitted
