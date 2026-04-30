@@ -251,15 +251,30 @@ function _currentRowIndex() {
 }
 
 // Shared "open the detail panel for this hash" routine. Used by:
+//   - AG Grid row click (grid.js onRowClicked delegates here)
 //   - keyboard nav (j/k) via _selectRowByIndex
 //   - generations-tray click (jumps to a job from the sidebar tray)
-// Always reveals the detail pane and remembers the selection.
-function openJobDetail(hash) {
+//   - the URL hydrator on first page load
+// Always reveals the detail pane and remembers the selection. Optionally
+// pushes ?job=<hash> onto the browser history so a refresh / back-button
+// returns to the same job. The hydrator passes pushHistory=false to avoid
+// stacking history when restoring the URL we already came in with.
+function openJobDetail(hash, opts) {
   if (!hash) return;
+  const pushHistory = !opts || opts.pushHistory !== false;
   window._jiaSelectedHash = hash;
   document.querySelector(".jia-app")?.classList.add("has-detail");
   if (window.htmx) {
     htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
+  }
+  // URL sync — only push when the URL would actually change. Avoids
+  // dirtying history when the user clicks the same row again.
+  if (pushHistory) {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("job") !== hash) {
+      url.searchParams.set("job", hash);
+      window.history.pushState({ jobHash: hash }, "", url);
+    }
   }
   // If the grid is loaded, also sync row selection so highlighting matches.
   if (_gridReady()) {
@@ -362,8 +377,10 @@ document.addEventListener("keydown", (e) => {
 });
 
 // Reset the detail pane to the empty-state placeholder. Exposed globally so
-// the close-X button in detail.html can call it.
-window.jia_closeDetail = function () {
+// the close-X button in detail.html can call it. Also clears ?job=<hash>
+// from the URL so a refresh lands on the empty state, not the closed job.
+window.jia_closeDetail = function (opts) {
+  const pushHistory = !opts || opts.pushHistory !== false;
   // Hide the detail pane (CSS does the rest — grid takes full width).
   document.querySelector(".jia-app")?.classList.remove("has-detail");
   // Clear AG Grid's row selection so the highlight goes away.
@@ -371,6 +388,14 @@ window.jia_closeDetail = function () {
     window._jiaGrid.deselectAll();
   }
   window._jiaSelectedHash = null;
+  // Strip ?job=<hash> from the URL.
+  if (pushHistory) {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("job")) {
+      url.searchParams.delete("job");
+      window.history.pushState({}, "", url);
+    }
+  }
   // Re-fit columns once the CSS transition lands (~180ms).
   setTimeout(() => window._jiaGrid && window._jiaGrid.sizeColumnsToFit(), 220);
   // Reset the detail content so a re-open starts cleanly.
@@ -384,6 +409,51 @@ window.jia_closeDetail = function () {
       </div>`;
   }
 };
+
+// ── Browser back/forward ──────────────────────────────────────────────
+// Listen for the user pressing back/forward and reflect the URL state
+// onto the detail pane. Pass pushHistory=false so we don't push another
+// history entry while navigating one.
+window.addEventListener("popstate", () => {
+  const hash = new URL(window.location.href).searchParams.get("job");
+  if (hash) {
+    openJobDetail(hash, { pushHistory: false });
+  } else if (window._jiaSelectedHash) {
+    window.jia_closeDetail({ pushHistory: false });
+  }
+});
+
+// ── Initial-load hydration ────────────────────────────────────────────
+// If the page loaded with ?job=<hash> in the URL (a refresh, a bookmark,
+// a shared link), open that job's detail pane as soon as the grid is
+// ready. The grid loads its rows asynchronously, so we wait until at
+// least one row is rendered before trying — otherwise the row-selection
+// sync inside openJobDetail would no-op silently.
+(function hydrateJobFromURL() {
+  const hash = new URL(window.location.href).searchParams.get("job");
+  if (!hash) return;
+  let attempts = 0;
+  const tryOpen = () => {
+    attempts += 1;
+    const ready =
+      window._jiaGrid &&
+      typeof window._jiaGrid.getDisplayedRowCount === "function" &&
+      window._jiaGrid.getDisplayedRowCount() > 0;
+    if (ready) {
+      openJobDetail(hash, { pushHistory: false });
+      return;
+    }
+    if (attempts < 40) setTimeout(tryOpen, 100); // give up after ~4s
+  };
+  // Start polling on DOMContentLoaded so the grid module has a chance
+  // to bootstrap. Some pages start with the grid already initialized
+  // (warm reload), so we also fire immediately.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", tryOpen);
+  } else {
+    tryOpen();
+  }
+})();
 
 // Track which row is currently selected. AG Grid sets this in grid.js when a
 // row is clicked or programmatically selected; the keyboard nav reads it

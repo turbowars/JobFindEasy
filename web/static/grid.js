@@ -145,18 +145,25 @@
     );
   }
 
-  // Row click → load the detail panel via HTMX and reveal the detail pane.
+  // Row click → flow through the shared openJobDetail helper in app.js.
+  // That helper handles HTMX swap, has-detail class, AG Grid selection
+  // sync, AND the ?job=<hash> URL pushState — keeping all four detail-
+  // pane entry paths (row click, j/k nav, generations tray, URL hydrate)
+  // identical. Falls back to inline behavior if app.js isn't loaded yet
+  // (shouldn't happen — app.js is `defer`-loaded before this script).
   function onRowClicked(event) {
     const hash = event.data && event.data.hash;
     if (!hash) return;
-    const detail = document.getElementById("detail");
-    if (!detail) return;
-    htmx.ajax("GET", `/partials/detail/${hash}`, {
-      target: "#detail",
-      swap: "innerHTML",
-    });
-    window._jiaSelectedHash = hash;
-    document.querySelector(".jia-app")?.classList.add("has-detail");
+    if (typeof window.jia_openJobDetail === "function") {
+      window.jia_openJobDetail(hash);
+    } else {
+      htmx.ajax("GET", `/partials/detail/${hash}`, {
+        target: "#detail",
+        swap: "innerHTML",
+      });
+      window._jiaSelectedHash = hash;
+      document.querySelector(".jia-app")?.classList.add("has-detail");
+    }
     // Nudge AG Grid to redraw header/columns at the new container width
     // after the CSS grid transition finishes (~180ms).
     setTimeout(
