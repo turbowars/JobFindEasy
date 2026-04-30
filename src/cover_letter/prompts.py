@@ -44,7 +44,7 @@ Pick the THREE signals from this table that match the JD's strongest emphases. T
 | signal key | JD trigger phrases | What this bullet conveys |
 |---|---|---|
 | turnaround | turn around, rescue, stuck, stalled, complex stakeholders, drive clarity | Fitbit rescue: stalled program shipped clean with zero P0/P1 defects |
-| team_scaling | scale a team, grow the org, hire, headcount, build out | nowfloats 5 -> 12 with hiring loop, interview design, onboarding playbook |
+| team_scaling | scale a team, grow the org, hire, headcount, build out | Nowfloats Technologies Pvt Ltd 5 -> 12 with hiring loop, interview design, onboarding playbook |
 | platform_devex | platform, shared infrastructure, developer experience, internal tools, design system | Equifax platform: 3 product teams shipping against shared component library |
 | end_to_end | end-to-end, production ownership, on-call, operational excellence, reliability | Equifax E2E: design partnership through CI gates, observability, on-call |
 | cross_functional | cross-functional, partner with PM and design, stakeholder, ambiguity | Strayer multi-brand: 4-engineer cross-geo team, onshore tech bridge |
@@ -120,7 +120,7 @@ Pick the THREE signals from this table that match the JD's strongest emphases. T
 | signal key | JD trigger phrases | What this bullet conveys |
 |---|---|---|
 | turnaround | turn around, rescue, stuck, stalled, complex stakeholders, drive clarity | Fitbit rescue: rewrote the architecture, shipped clean with zero P0/P1 defects |
-| team_scaling | scale a team, grow the org, hire, headcount, build out | nowfloats scaling: authored interview questions, ran senior loops, built onboarding |
+| team_scaling | scale a team, grow the org, hire, headcount, build out | Nowfloats Technologies Pvt Ltd scaling: authored interview questions, ran senior loops, built onboarding |
 | platform_devex | platform, shared infrastructure, developer experience, internal tools, design system | Equifax platform: designed and shipped the React/TS micro-frontend powering 3 product teams |
 | end_to_end | end-to-end, production ownership, on-call, operational excellence, reliability | Equifax E2E: design, CI gates, observability, on-call all owned personally |
 | cross_functional | cross-functional, partner with PM and design, stakeholder, ambiguity | Strategic Education: onshore technical bridge across product, design, analytics, offshore eng |

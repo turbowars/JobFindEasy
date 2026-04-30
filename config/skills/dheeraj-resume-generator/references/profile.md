@@ -230,11 +230,11 @@ _Joined TA Digital's India entity as Principal Engineer. Served as frontend arch
 
 ---
 
-### nowfloats · Principal Engineer · Hyderabad, India · Mar 2017 – Feb 2018
+### Nowfloats Technologies Pvt Ltd · Principal Engineer · Hyderabad, India · Mar 2017 – Feb 2018
 
 #### Engineering track
 
-_Owned frontend architecture for the nowfloats web platform, a consumer and merchant product serving 10M+ small-and-medium business (SMB) merchants across India and Southeast Asia. Led a 12-engineer UI team while staying deeply hands-on in architecture and platform code._
+_Owned frontend architecture for the Nowfloats Technologies Pvt Ltd web platform, a consumer and merchant product serving 10M+ small-and-medium business (SMB) merchants across India and Southeast Asia. Led a 12-engineer UI team while staying deeply hands-on in architecture and platform code._
 
 - Owned frontend architecture for a web platform serving 10M+ SMB merchants across India and Southeast Asia, leading a 12-engineer UI team while staying deeply hands-on in platform code.
 - Architected the mobile-first PWA serving low-end Android devices over unreliable networks, implementing service workers, offline-first sync, and background sync queues that enabled merchant operations during ~30% of sessions with degraded or no connectivity.

@@ -582,8 +582,11 @@ EXPERIENCE = [
         ],
     },
     {
+        # `key` is the stable internal identifier (matches the LLM bullet-pool
+        # routing in src/resume/prompts.py); kept short for readability. The
+        # human-facing `company` is the legal name rendered on the resume.
         "key": "nowfloats",
-        "company": "nowfloats",
+        "company": "Nowfloats Technologies Pvt Ltd",
         "title": "Principal Engineer (UI / UX)",
         "location": "Hyderabad, India",
         "dates": "Mar 2017 - Feb 2018",

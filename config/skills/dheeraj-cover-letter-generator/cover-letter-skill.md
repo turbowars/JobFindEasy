@@ -76,7 +76,7 @@ The cover letter uses three bullets. Do not default to the same three every time
 | JD signal (look for these phrases) | Best-fit bullet (and source evidence) |
 |---|---|
 | "Turn around," "rescue," "stuck," "complex stakeholders," "drive clarity" | **Fitbit rescue:** Took over a year-long stalled redesign as Scrum Master and Tech Lead. Established sprint cadence, rebuilt the client demo loop, set code review and QA standards, shipped to production with zero P0 or P1 defects across a 14-person cross-functional team. Fitbit extended the engagement on the back of that delivery. |
-| "Scale a team," "grow the org," "hire," "headcount," "build out" | **NowFloats scale:** Grew the engineering team from 5 to 12 without regressing velocity. Owned the hiring loop, technical interview design, and onboarding playbook; mentored two engineers into senior roles. |
+| "Scale a team," "grow the org," "hire," "headcount," "build out" | **Nowfloats Technologies Pvt Ltd scale:** Grew the engineering team from 5 to 12 without regressing velocity. Owned the hiring loop, technical interview design, and onboarding playbook; mentored two engineers into senior roles. |
 | "Platform," "shared infrastructure," "developer experience," "internal tools," "design system" | **Equifax platform:** Lead the React and TypeScript micro-frontend platform powering the consumer product suite. 3 product teams ship against a shared component library and contract-tested design tokens; build cycles down 25%, cross-team release blockers eliminated. |
 | "End-to-end," "production ownership," "on-call," "operational excellence," "reliability" | **Equifax E2E ownership:** My team owns its slice from design partnership through Playwright and Vitest gates in CI, OpenTelemetry and Core Web Vitals dashboards in production, and on-call rotations. Same pattern at Midigator: embeddable SDK design through partner integration testing and post-launch support. |
 | "Cross-functional," "partner with PM and design," "stakeholder," "ambiguity" | **Strayer multi-brand:** Led a four-engineer cross-geo team for two years on the Strategic Education redesign and shared component system across Strayer and Sophia. Operated as the onshore technical bridge across product, design, analytics, and offshore engineering; ran architecture reviews, pairing, and client-facing demos. |
@@ -88,7 +88,7 @@ The cover letter uses three bullets. Do not default to the same three every time
 **Selection rules:**
 
 - Three bullets, three different signals. No double-dipping (e.g., don't pick two Equifax bullets unless the JD has two distinct signals that both map there).
-- If the JD has a strong people-leadership emphasis, at least one bullet must be from the people/culture row (NowFloats scale, Equifax mentoring).
+- If the JD has a strong people-leadership emphasis, at least one bullet must be from the people/culture row (Nowfloats Technologies Pvt Ltd scale, Equifax mentoring).
 - If a JD signal isn't in the table, write the bullet using the closest available evidence and flag it to the user.
 
 ### Frame discipline checklist
@@ -118,4 +118,4 @@ Before sending, scan for these IC-coded patterns and rewrite if found:
    - **Punctuation scan:** Search for em dashes (the long dash character), en dashes (the medium dash character), and the " - " pattern used as an em dash substitute. Replace each with the appropriate comma, colon, semicolon, or parentheses based on context.
    - **Metrics scan:** For every number or specific claim in the draft, confirm it appears in the master resume, the experience documents, or this skill file without a [verify] flag. If a number is [verify]-tagged or unsourced, either remove the metric or replace it with a qualitative phrasing. Never ship an unverified number.
 
-6. **Present with selection logic.** When delivering the draft, briefly note which JD signals drove which bullet picks so the user can swap quickly. Example: "I picked Fitbit for the turnaround signal, Equifax platform for the developer experience signal, and NowFloats for the team scaling signal. Swap any if the priority feels off."
+6. **Present with selection logic.** When delivering the draft, briefly note which JD signals drove which bullet picks so the user can swap quickly. Example: "I picked Fitbit for the turnaround signal, Equifax platform for the developer experience signal, and Nowfloats Technologies Pvt Ltd for the team scaling signal. Swap any if the priority feels off."

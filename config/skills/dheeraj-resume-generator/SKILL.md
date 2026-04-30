@@ -106,7 +106,7 @@ Load `references/profile.md` and use the **Engineering track** or **Management t
 - Midigator: 3 to 5 bullets
 - TA Digital USA: 4 to 6 bullets (split across Strategic Education + AARP if space allows)
 - TA Digital India: 3 to 4 bullets (Fitbit or Bose, pick whichever maps to the JD)
-- nowfloats: 2 to 3 bullets
+- Nowfloats Technologies Pvt Ltd: 2 to 3 bullets
 - Deloitte Digital Studio: 2 bullets (title line + 1 to 2)
 - Neudesic: 1 bullet or title line only
 
@@ -115,7 +115,7 @@ Load `references/profile.md` and use the **Engineering track** or **Management t
 - Equifax: 4 to 6 bullets
 - Midigator: 3 to 4 bullets
 - TA Digital: 2 to 3 bullets
-- nowfloats: 1 bullet
+- Nowfloats Technologies Pvt Ltd: 1 bullet
 - Deloitte Digital Studio, Neudesic: title line only
 
 **Rewrite rules:**
