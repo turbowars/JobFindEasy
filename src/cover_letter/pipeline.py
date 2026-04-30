@@ -22,6 +22,7 @@ fabrication.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -51,6 +52,37 @@ def expected_cover_letter_path(jd_title: str, jd_company: str) -> Path:
     safe_t = safe_filename_part(jd_title)
     safe_c = safe_filename_part(jd_company)
     return OUTPUT_DIR / f"CoverLetter_Dheeraj_Sampath_{safe_t}_{safe_c}.docx"
+
+
+def expected_cover_sidecar_path(jd_title: str, jd_company: str) -> Path:
+    """Sibling of expected_cover_letter_path — points at the structured
+    JSON sidecar that lives next to the .docx. The /api/job/{hash}.json
+    endpoint reads this so Claude-in-Chrome can answer "Why this
+    company?" form fields verbatim, without parsing the .docx prose.
+    """
+    return expected_cover_letter_path(jd_title, jd_company).with_suffix(".json")
+
+
+def _write_sidecar(letter: CoverLetter, output_path: Path) -> None:
+    """Dump the structured letter contents to <output_path>.json so
+    /api/job/{hash}.json can answer "Why this company?" form fields
+    deterministically without parsing the .docx prose.
+
+    `why_this_company` composes company_hook + company_fit_line; if
+    neither is filled, it's null and the API surfaces that explicitly
+    so Claude leaves the form field blank and flags it (rather than
+    fabricating).
+    """
+    parts = [p.strip() for p in (letter.company_hook, letter.company_fit_line) if p and p.strip()]
+    payload = {
+        "track": "ic" if letter.frame == "ic" else "em",
+        "frame": letter.frame,
+        "company_hook": letter.company_hook,
+        "company_fit_line": letter.company_fit_line,
+        "why_this_company": " ".join(parts) if parts else None,
+        "bullets": [{"signal": b.signal, "text": b.bullet} for b in letter.bullets],
+    }
+    output_path.with_suffix(".json").write_text(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +259,7 @@ def generate_cover_letter(
 
     output_path = expected_cover_letter_path(jd_title, jd_company)
     build_docx(letter, output_path)
+    _write_sidecar(letter, output_path)
 
     public_path = mirror_to_public(output_path)
     if public_path:

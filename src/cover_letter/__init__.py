@@ -14,11 +14,13 @@ get the first-person IC template.
 from .pipeline import (
     autogen_cover_letter_if_missing,
     expected_cover_letter_path,
+    expected_cover_sidecar_path,
     generate_cover_letter,
 )
 
 __all__ = [
     "autogen_cover_letter_if_missing",
     "expected_cover_letter_path",
+    "expected_cover_sidecar_path",
     "generate_cover_letter",
 ]

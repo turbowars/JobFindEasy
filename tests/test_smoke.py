@@ -1505,6 +1505,9 @@ def test_claude_queue_orders_by_tier_then_status_then_score():
             },
         ]
     )
+    # _build_claude_queue gates on prefilter_passed (matches dashboard grid);
+    # every row in this fixture is a curated-state job we want surfaced.
+    df["prefilter_passed"] = 1
 
     queue = _build_claude_queue(df)
     titles = [j["title"] for j in queue]
@@ -1525,11 +1528,13 @@ def test_claude_queue_orders_by_tier_then_status_then_score():
     ], f"unexpected queue order: {titles}"
 
 
-def test_claude_prompt_includes_required_sections_and_personal_facts(monkeypatch):
+def test_claude_prompt_references_new_apis(monkeypatch):
     """The prompt is the user-facing contract for Claude-for-Chrome behavior.
-    Pin that we render: every required section header, the personal facts
-    pulled from APPLICATION_DEFAULTS, the batch size, and the no_sponsorship
-    instruction. Don't pin prose — pin landmarks."""
+    Post the API-first rewrite, the prompt teaches Claude to call JSON
+    endpoints (not scrape the dashboard UI). Pin: required section headers,
+    every API endpoint Claude is told about, batch size, sponsorship rule.
+    Personal facts live in /api/job/<hash>.json `application_defaults` —
+    NOT restated in the prompt body."""
     from fastapi.testclient import TestClient
 
     from src import db as db_module
@@ -1572,13 +1577,11 @@ def test_claude_prompt_includes_required_sections_and_personal_facts(monkeypatch
     assert r.status_code == 200
     body = r.text
 
-    # Section landmarks. The prompt no longer embeds the queue — Claude
-    # reads it directly from the dashboard's Target filter — so there's
-    # no "## Queue" section anymore.
+    # Section landmarks for the API-first prompt.
     for header in (
-        "## About Dheeraj",
+        "## API contract",
+        "## Sponsorship rule",
         "## Tab discipline",
-        "## Tailored artifacts per job",
         "## Workflow",
         "## End-of-queue summary",
         "## Hard rules",
@@ -1589,24 +1592,386 @@ def test_claude_prompt_includes_required_sections_and_personal_facts(monkeypatch
     # Batch size baked into the workflow narrative
     assert "BATCHES OF 5" in body.upper()
 
-    # Personal facts from APPLICATION_DEFAULTS — single source of truth.
-    # Email = proton (the resume-header address), NOT the user's personal
-    # Gmail. Pinned because the user has explicitly corrected this.
-    assert "dheerajsampath@proton.me" in body
+    # The four API endpoints Claude must know to call.
+    assert "/api/queue.json" in body
+    assert "/api/job/<hash>.json" in body
+    assert "/api/applied/<hash>" in body
+    assert "/api/no-sponsorship/<hash>" in body
+
+    # The prompt points at application_defaults as the single source of
+    # truth for personal facts — must NOT restate them in the prompt body
+    # itself (drift risk; the JSON is the contract).
+    assert "application_defaults" in body
+    assert "cover_letter_content.why_this_company" in body
+
+    # Sensitive personal facts must NOT leak into the prompt body — they
+    # ride per-job in the JSON. The Gmail check is a regression guard:
+    # turbowars@gmail.com is the user's personal address; only the
+    # proton address goes on application forms (and even that's now
+    # surfaced via JSON only).
     assert "turbowars@gmail.com" not in body
-    assert "evolvingdx" in body  # LinkedIn
-    assert "github.com/turbowars" in body  # GitHub URL (turbowars = username)
-    assert "dheerajsampath.com" in body  # personal site
-    assert "(248) 873-8929" in body  # phone
-    assert "Austin, TX" in body  # location
-    assert "he/him" in body  # pronouns
-    assert "Indian" in body  # citizenship
-    assert "REQUIRES sponsorship" in body  # sponsorship stance
 
     # The prompt must instruct Claude to mark sponsorship-denied jobs as
-    # "No Sponsorship" — NOT silently skip them.
-    assert "No Sponsorship" in body
+    # No Sponsorship via the API — NOT silently skip them.
+    assert "no-sponsorship" in body or "No Sponsorship" in body
+    assert "REQUIRES sponsorship" in body  # the work_authorization stance is still in-prompt
 
-    # Claude is told to use the Target filter, NOT given an embedded queue.
-    assert "Target" in body
-    assert "filtered grid IS the queue" in body
+    # Old UI-driven steps must NOT appear (the rewrite replaced them).
+    assert "Click the top unprocessed row" not in body
+    assert "filtered grid IS the queue" not in body
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# New API-first endpoints + cover-letter sidecar.
+#
+# These pin the contract Claude-in-Chrome reads. The shape change cost was
+# real: rewriting the prompt to hit JSON instead of scraping the dashboard
+# is only safe if the JSON keeps its shape. Each test below corresponds to
+# a regression we'd ship without it.
+# ────────────────────────────────────────────────────────────────────────────
+def _stub_one_job_df(monkeypatch, **overrides):
+    """Helper: install a single-row DataFrame as db.to_dataframe()'s output.
+    Returns the row dict so tests can check what they stubbed."""
+    from src import db as db_module
+
+    row = {
+        "hash": "abc123",
+        "source": "greenhouse",
+        "company": "Acme",
+        "title": "Engineering Manager, Frontend Platform",
+        "location": "Remote - USA",
+        "url": "https://acme.example/jobs/em-fp",
+        "description": "We are hiring an EM. No mention of sponsorship.",
+        "posted_at": "2026-04-29",
+        "salary_min": None,
+        "salary_max": None,
+        "remote": 1,
+        "sponsorship_status": "unknown",
+        "prefilter_passed": 1,
+        "prefilter_reason": "",
+        "score_total": 92.0,
+        "score_breakdown": "{}",
+        "score_rationale": "",
+        "tier": "strong",
+        "status": "shortlisted",
+        "status_at": None,
+        "closed_reason": None,
+        "applied_at": None,
+        "notes": "",
+        "scraped_at": "2026-04-29T00:00:00",
+    }
+    row.update(overrides)
+    df = pd.DataFrame([row])
+    monkeypatch.setattr(db_module, "to_dataframe", lambda: df)
+    monkeypatch.setattr(db_module, "get_job", lambda h: row if h == row["hash"] else None)
+    return row
+
+
+def test_api_queue_json_orders_and_trims(monkeypatch):
+    """The actionable queue endpoint reuses _build_claude_queue and trims
+    to the JSON shape Claude needs. Pins the field set + the cap."""
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from web import app as web_app
+
+    df = pd.DataFrame(
+        [
+            {
+                "hash": "h1",
+                "title": "t1",
+                "company": "c1",
+                "status": "shortlisted",
+                "tier": "strong",
+                "score_total": 90.0,
+                "scraped_at": "2026-04-29",
+                "url": "u1",
+                "location": "",
+            },
+            {
+                "hash": "h2",
+                "title": "t2",
+                "company": "c2",
+                "status": "new",
+                "tier": "strong",
+                "score_total": 85.0,
+                "scraped_at": "2026-04-29",
+                "url": "u2",
+                "location": "",
+            },
+            # Terminal — must NOT appear
+            {
+                "hash": "h3",
+                "title": "t3",
+                "company": "c3",
+                "status": "closed",
+                "tier": "strong",
+                "score_total": 99.0,
+                "scraped_at": "2026-04-29",
+                "url": "u3",
+                "location": "",
+            },
+        ]
+    )
+    df["prefilter_passed"] = 1  # gate matches dashboard grid
+    monkeypatch.setattr(db_module, "to_dataframe", lambda: df)
+
+    client = TestClient(web_app.app)
+    r = client.get("/api/queue.json?limit=10")
+    assert r.status_code == 200
+    body = r.json()
+    assert {q["hash"] for q in body["queue"]} == {"h1", "h2"}, "terminal states leaked"
+    assert body["queue"][0]["hash"] == "h1", "shortlisted should sort before new"
+    # Pin the field set so a refactor that drops fields breaks this.
+    first = body["queue"][0]
+    assert set(first.keys()) == {"hash", "title", "company", "score", "tier", "status", "apply_url"}
+    assert body["total"] == 2
+    assert body["returned"] == 2
+
+    # Limit clamping
+    r = client.get("/api/queue.json?limit=1")
+    assert len(r.json()["queue"]) == 1
+    assert r.json()["total"] == 2  # full count stays accurate
+
+
+def test_api_job_returns_full_bundle(monkeypatch, tmp_path):
+    """The per-job endpoint bundles JD + artifacts + application_defaults
+    + cover_letter_content. Pin every required key so a missed field
+    breaks the test, not Claude-in-Chrome at runtime."""
+    from fastapi.testclient import TestClient
+
+    from src import utils as utils_module
+    from src.cover_letter import expected_cover_letter_path, expected_cover_sidecar_path
+    from src.resume import existing_resume_path
+    from web import app as web_app
+
+    # Install fake exports dir + write artifacts so existing_resume_path /
+    # expected_cover_letter_path point at real files.
+    monkeypatch.setattr(utils_module, "OUTPUT_DIR", tmp_path)
+    # Re-import the resume + cover_letter modules' OUTPUT_DIR references
+    # by patching the symbols they imported.
+    from src.cover_letter import pipeline as cover_pipeline
+    from src.resume import pipeline as resume_pipeline
+
+    monkeypatch.setattr(resume_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cover_pipeline, "OUTPUT_DIR", tmp_path)
+
+    row = _stub_one_job_df(monkeypatch)
+
+    rp = existing_resume_path(row["title"], row["company"], row["location"])
+    rp.write_bytes(b"fake docx")
+    rp.with_suffix(".scores.json").write_text(
+        '{"ats_match": {"match_pct": 87}, "hr": {"hr_score": 84}}'
+    )
+    cp = expected_cover_letter_path(row["title"], row["company"])
+    cp.write_bytes(b"fake docx")
+    expected_cover_sidecar_path(row["title"], row["company"]).write_text(
+        '{"track": "em", "frame": "standard", "company_hook": "We love Acme",'
+        ' "company_fit_line": "Their platform work matters.",'
+        ' "why_this_company": "We love Acme Their platform work matters.",'
+        ' "bullets": [{"signal": "platform_devex", "text": "..."}]}'
+    )
+
+    client = TestClient(web_app.app)
+    r = client.get(f"/api/job/{row['hash']}.json")
+    assert r.status_code == 200
+    body = r.json()
+
+    # Top-level keys
+    for key in (
+        "hash",
+        "title",
+        "company",
+        "location",
+        "url",
+        "description",
+        "sponsorship_status",
+        "score_total",
+        "tier",
+        "status",
+        "track",
+        "artifacts",
+        "cover_letter_content",
+        "application_defaults",
+        "actions",
+    ):
+        assert key in body, f"missing key: {key}"
+
+    # Artifact paths are absolute and match what we wrote
+    assert body["artifacts"]["resume_path"] == str(rp.absolute())
+    assert body["artifacts"]["resume_filename"] == rp.name
+    assert body["artifacts"]["cover_letter_path"] == str(cp.absolute())
+    assert body["artifacts"]["scores"] == {"ats_match_pct": 87, "hr_score": 84}
+
+    # Cover letter content composed from sidecar
+    assert body["cover_letter_content"]["why_this_company"].startswith("We love Acme")
+    assert body["cover_letter_content"]["track"] == "em"
+
+    # Action URLs Claude POSTs to
+    assert body["actions"]["mark_applied"] == f"/api/applied/{row['hash']}"
+    assert body["actions"]["mark_no_sponsorship"] == f"/api/no-sponsorship/{row['hash']}"
+
+    # Single-source-of-truth: all of APPLICATION_DEFAULTS makes it through
+    from src.resume import profile as resume_profile
+
+    assert set(body["application_defaults"].keys()) == set(
+        resume_profile.APPLICATION_DEFAULTS.keys()
+    )
+
+
+def test_api_job_handles_missing_artifacts(monkeypatch, tmp_path):
+    """When neither the resume nor the cover letter is on disk, the JSON
+    surfaces nulls (not crashes). cover_letter_content is null too —
+    Claude is instructed (in the prompt) to flag the job."""
+    from fastapi.testclient import TestClient
+
+    from src import utils as utils_module
+    from src.cover_letter import pipeline as cover_pipeline
+    from src.resume import pipeline as resume_pipeline
+    from web import app as web_app
+
+    monkeypatch.setattr(utils_module, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(resume_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cover_pipeline, "OUTPUT_DIR", tmp_path)
+    row = _stub_one_job_df(monkeypatch)
+
+    client = TestClient(web_app.app)
+    r = client.get(f"/api/job/{row['hash']}.json")
+    assert r.status_code == 200
+    body = r.json()
+
+    assert body["artifacts"]["resume_path"] is None
+    assert body["artifacts"]["cover_letter_path"] is None
+    assert body["artifacts"]["scores"] is None
+    assert body["cover_letter_content"] is None
+
+
+def test_api_job_handles_pathological_title(monkeypatch, tmp_path):
+    """A 1000-char title (a scraper bug we've actually seen) produces a
+    filename longer than the filesystem max. existing_resume_path's
+    .exists() probe raises OSError ENAMETOOLONG. The endpoint must
+    treat that as "no artifact" rather than 500."""
+    from fastapi.testclient import TestClient
+
+    from src import utils as utils_module
+    from src.cover_letter import pipeline as cover_pipeline
+    from src.resume import pipeline as resume_pipeline
+    from web import app as web_app
+
+    monkeypatch.setattr(utils_module, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(resume_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cover_pipeline, "OUTPUT_DIR", tmp_path)
+
+    row = _stub_one_job_df(monkeypatch, title="A" * 1000)
+
+    client = TestClient(web_app.app)
+    r = client.get(f"/api/job/{row['hash']}.json")
+    assert r.status_code == 200, f"expected 200, got {r.status_code}: {r.text[:200]}"
+    body = r.json()
+    assert body["artifacts"]["resume_path"] is None
+    assert body["artifacts"]["cover_letter_path"] is None
+
+
+def test_api_applied_alias_flips_status(monkeypatch):
+    """POST /api/applied/<hash> ≡ POST /actions/status/<hash>?status=applied
+    in DB outcome. Tested separately because the alias is what Claude
+    POSTs from JSON; the underlying /actions/status is a form-encoded
+    HTML endpoint and its contract isn't part of the JSON API."""
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from web import app as web_app
+
+    set_status_calls = []
+
+    def fake_set_status(job_hash, status, closed_reason):
+        set_status_calls.append((job_hash, status, closed_reason))
+
+    monkeypatch.setattr(db_module, "get_job", lambda h: {"hash": h} if h == "abc123" else None)
+    monkeypatch.setattr(db_module, "set_status", fake_set_status)
+
+    client = TestClient(web_app.app)
+
+    r = client.post("/api/applied/abc123")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "status": "applied"}
+    assert set_status_calls == [("abc123", "applied", None)]
+
+    r = client.post("/api/no-sponsorship/abc123")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "status": "no_sponsorship"}
+    assert set_status_calls[-1] == ("abc123", "no_sponsorship", None)
+
+    # 404 for unknown hash
+    r = client.post("/api/applied/zzz")
+    assert r.status_code == 404
+
+
+def test_cover_letter_sidecar_written_on_generate(tmp_path, monkeypatch):
+    """The cover-letter pipeline now writes a .json sidecar next to the
+    .docx with structured content (track, why_this_company, bullets).
+    /api/job/<hash>.json reads it; if it stops being written, the
+    "Why this company?" answer becomes invisible to Claude."""
+    from src.cover_letter import pipeline as cover_pipeline
+    from src.cover_letter.template import BulletPick, CoverLetter
+
+    letter = CoverLetter(
+        hiring_manager_name="",
+        opening_hook="Excited to apply for the Frontend Platform EM role.",
+        company_hook="Your investment in design systems is exactly the work I want to do.",
+        bullets=[
+            BulletPick(signal="platform_devex", bullet="bullet 1"),
+            BulletPick(signal="team_scaling", bullet="bullet 2"),
+            BulletPick(signal="delivery_at_scale", bullet="bullet 3"),
+        ],
+        company_fit_line="Acme's frontend platform work compounds across the org.",
+        jd_title="EM, FE Platform",
+        jd_company="Acme",
+        frame="standard",
+    )
+
+    docx_path = tmp_path / "cover.docx"
+    cover_pipeline._write_sidecar(letter, docx_path)
+
+    sidecar_path = tmp_path / "cover.json"
+    assert sidecar_path.exists()
+    payload = json.loads(sidecar_path.read_text())
+    assert payload["track"] == "em"
+    assert payload["frame"] == "standard"
+    assert payload["company_hook"].startswith("Your investment")
+    assert payload["company_fit_line"].startswith("Acme's frontend")
+    # why_this_company is the composition: hook + " " + fit_line
+    assert payload["why_this_company"] == letter.company_hook + " " + letter.company_fit_line
+    assert len(payload["bullets"]) == 3
+    assert payload["bullets"][0] == {"signal": "platform_devex", "text": "bullet 1"}
+
+
+@pytest.mark.parametrize(
+    "hook,fit,expected",
+    [
+        ("h", "f", "h f"),  # both
+        ("only the hook", "", "only the hook"),  # hook only
+        ("", "only the fit", "only the fit"),  # fit only
+        ("", "", None),  # neither — null
+        ("   ", "  ", None),  # whitespace-only both — null
+    ],
+)
+def test_cover_letter_sidecar_why_composition(tmp_path, hook, fit, expected):
+    """why_this_company composition rule: join non-empty parts with one
+    space, return None when nothing's filled. Pinned because Claude is
+    told to use this answer VERBATIM — silent regression to "" instead
+    of None would put empty strings in form fields."""
+    from src.cover_letter import pipeline as cover_pipeline
+    from src.cover_letter.template import BulletPick, CoverLetter
+
+    letter = CoverLetter(
+        hiring_manager_name="",
+        opening_hook="x",
+        company_hook=hook,
+        bullets=[BulletPick(signal="platform_devex", bullet="b")],
+        company_fit_line=fit,
+        frame="standard",
+    )
+    cover_pipeline._write_sidecar(letter, tmp_path / "x.docx")
+    payload = json.loads((tmp_path / "x.json").read_text())
+    assert payload["why_this_company"] == expected
