@@ -61,6 +61,22 @@ app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=WEB_DIR / "templates")
 
 
+def _static_url(filename: str) -> str:
+    """Return /static/<filename>?v=<mtime> so the browser cache invalidates
+    automatically whenever the file is edited. Beats manually bumping a
+    `?v=7` query string on every static change.
+    """
+    p = WEB_DIR / "static" / filename
+    try:
+        mtime = int(p.stat().st_mtime)
+    except FileNotFoundError:
+        mtime = 0
+    return f"/static/{filename}?v={mtime}"
+
+
+templates.env.globals["static_url"] = _static_url
+
+
 @app.on_event("startup")
 def _startup() -> None:
     db.init_db()
@@ -411,14 +427,32 @@ def action_status(
 
 @app.post("/actions/apply/{job_hash}")
 def action_apply(job_hash: str):
-    """Convenience: flip status to 'applying'. The Claude-for-Chrome
-    session-brief generation hooks here in a follow-up PR; for now this
-    just records that you've started the apply flow."""
+    """Mark a job as 'applying' if it's still in an early-stage status.
+
+    Only transitions from 'new' or 'shortlisted' -> 'applying'. Jobs that
+    are already further along the pipeline (applying / applied /
+    interviewing / offer / closed) are left untouched, so a user clicking
+    the grid's posting link or the "Apply with Claude" button on a
+    progressed job doesn't silently undo their state.
+
+    Returns the current status so the client can flash an honest message.
+    """
     job = db.get_job(job_hash)
     if not job:
         raise HTTPException(404, "job not found")
-    db.set_status(job_hash, "applying")
-    return JSONResponse({"ok": True, "url": job.get("url") or ""})
+    current = job.get("status") or "new"
+    transitioned = current in ("new", "shortlisted")
+    if transitioned:
+        db.set_status(job_hash, "applying")
+        current = "applying"
+    return JSONResponse(
+        {
+            "ok": True,
+            "url": job.get("url") or "",
+            "transitioned": transitioned,
+            "status": current,
+        }
+    )
 
 
 @app.post("/actions/notes/{job_hash}")

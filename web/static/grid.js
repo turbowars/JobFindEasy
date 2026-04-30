@@ -15,7 +15,7 @@
   }
 
   const SCORE_ACCENT = "#10b981";
-  const INK_3        = "rgba(232,232,232,0.38)";
+  const INK_3 = "rgba(232,232,232,0.38)";
 
   // Cell renderer for the score column: progress bar + number, accent only
   // when score >= 80.
@@ -37,7 +37,8 @@
 
   function tierCellRenderer(params) {
     const t = params.value;
-    if (!t) return `<span class="text-ink-3 text-[11px] uppercase tracking-wider">—</span>`;
+    if (!t)
+      return `<span class="text-ink-3 text-[11px] uppercase tracking-wider">—</span>`;
     const cls = t === "strong" ? "text-accent" : "text-ink-3";
     return `<span class="${cls} text-[11px] uppercase tracking-wider">${t}</span>`;
   }
@@ -45,7 +46,15 @@
   function urlCellRenderer(params) {
     const u = params.value;
     if (!u) return "";
-    return `<a href="${u}" target="_blank" rel="noopener" class="text-ink-3 hover:text-accent" onclick="event.stopPropagation()" title="Open posting">↗</a>`;
+    const hash = (params.data && params.data.hash) || "";
+    // Browser handles the new-tab open via target=_blank. The inline onclick
+    // stops row-selection bubbling AND fires the status change to "applying"
+    // in the background, mirroring the "Apply with Claude" button behavior.
+    const onclick = `event.stopPropagation(); if (window.jia_markApplying) window.jia_markApplying('${hash}')`;
+    return `<a href="${u}" target="_blank" rel="noopener"
+              class="text-ink-3 hover:text-accent"
+              onclick="${onclick}"
+              title="Open posting (marks job as applying)">Do IT↗</a>`;
   }
 
   function copyableCellRenderer(params) {
@@ -65,23 +74,69 @@
   // pane's status strip. Distinction is glyph + opacity, not extra colors
   // (3-color palette discipline).
   const STATUS_GLYPHS = {
-    new: "○", shortlisted: "★", applying: "▶", applied: "✓",
-    interviewing: "⟳", offer: "◆", closed: "—",
+    new: "○",
+    shortlisted: "★",
+    applying: "▶",
+    applied: "✓",
+    interviewing: "⟳",
+    offer: "◆",
+    closed: "—",
   };
   const STATUS_LABELS = {
-    new: "New", shortlisted: "Shortlisted", applying: "Applying",
-    applied: "Applied", interviewing: "Interviewing", offer: "Offer",
+    new: "New",
+    shortlisted: "Shortlisted",
+    applying: "Applying",
+    applied: "Applied",
+    interviewing: "Interviewing",
+    offer: "Offer",
     closed: "Closed",
   };
+  // Native <select> overlaid on the chip gives free dropdown UX (browser-
+  // owned positioning, keyboard a11y, click-outside-to-close) while the
+  // visible chip stays as-is. The select is invisible (opacity:0) and
+  // covers the chip; a click on the cell hits the select, opening the
+  // native picker. Closed states are flattened to "Closed (reason)" so
+  // the user picks status + reason in one action.
+  const STATUS_OPTIONS = [
+    { value: "new",          label: "○ New" },
+    { value: "shortlisted",  label: "★ Shortlisted" },
+    { value: "applying",     label: "▶ Applying" },
+    { value: "applied",      label: "✓ Applied" },
+    { value: "interviewing", label: "⟳ Interviewing" },
+    { value: "offer",        label: "◆ Offer" },
+    { value: "closed:rejected",          label: "— Closed (rejected)" },
+    { value: "closed:withdrew",          label: "— Closed (withdrew)" },
+    { value: "closed:ghosted",           label: "— Closed (ghosted)" },
+    { value: "closed:declined_offer",    label: "— Closed (declined offer)" },
+    { value: "closed:accepted_elsewhere",label: "— Closed (accepted elsewhere)" },
+  ];
+
   function statusCellRenderer(params) {
     const s = params.value || "new";
+    const hash = (params.data && params.data.hash) || "";
     const reason = params.data && params.data.closed_reason;
-    const label = (s === "closed" && reason)
-      ? `Closed · ${reason.replace(/_/g, " ")}`
-      : (STATUS_LABELS[s] || s);
-    return `<span class="status-chip status-${s}">`
-         + `<span class="status-glyph">${STATUS_GLYPHS[s] || "•"}</span>`
-         + `<span class="status-label">${label}</span></span>`;
+    const label =
+      s === "closed" && reason
+        ? `Closed · ${reason.replace(/_/g, " ")}`
+        : STATUS_LABELS[s] || s;
+    const currentValue = s === "closed" && reason ? `closed:${reason}` : s;
+    const opts = STATUS_OPTIONS.map(
+      (o) => `<option value="${o.value}"${o.value === currentValue ? " selected" : ""}>${o.label}</option>`
+    ).join("");
+    return (
+      `<span class="status-chip-wrapper">` +
+        `<span class="status-chip status-${s}">` +
+          `<span class="status-glyph">${STATUS_GLYPHS[s] || "•"}</span>` +
+          `<span class="status-label">${label}</span>` +
+        `</span>` +
+        `<select class="status-chip-select" aria-label="Change status" ` +
+                `data-hash="${hash}" ` +
+                `onclick="event.stopPropagation()" ` +
+                `onchange="event.stopPropagation(); window.jia_setStatus && window.jia_setStatus(this.dataset.hash, this.value, this)">` +
+          opts +
+        `</select>` +
+      `</span>`
+    );
   }
 
   // Row click → load the detail panel via HTMX and reveal the detail pane.
@@ -90,19 +145,25 @@
     if (!hash) return;
     const detail = document.getElementById("detail");
     if (!detail) return;
-    htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
+    htmx.ajax("GET", `/partials/detail/${hash}`, {
+      target: "#detail",
+      swap: "innerHTML",
+    });
     window._jiaSelectedHash = hash;
     document.querySelector(".jia-app")?.classList.add("has-detail");
     // Nudge AG Grid to redraw header/columns at the new container width
     // after the CSS grid transition finishes (~180ms).
-    setTimeout(() => window._jiaGrid && window._jiaGrid.sizeColumnsToFit(), 220);
+    setTimeout(
+      () => window._jiaGrid && window._jiaGrid.sizeColumnsToFit(),
+      220,
+    );
   }
 
   const columnDefs = [
     {
       field: "url",
-      headerName: "",
-      width: 40,
+      headerName: "Apply",
+      width: 80,
       sortable: false,
       filter: false,
       cellRenderer: urlCellRenderer,
@@ -120,7 +181,7 @@
       field: "tier",
       headerName: "Tier",
       width: 110,
-      filter: "agSetColumnFilter",   // falls back to text in Community; that's fine
+      filter: "agSetColumnFilter", // falls back to text in Community; that's fine
       cellRenderer: tierCellRenderer,
     },
     {
@@ -206,19 +267,23 @@
     },
     rowClassRules: {
       "row-selected": (params) =>
-        window._jiaSelectedHash && params.data && params.data.hash === window._jiaSelectedHash,
+        window._jiaSelectedHash &&
+        params.data &&
+        params.data.hash === window._jiaSelectedHash,
       "row-closed": (params) => params.data && params.data.status === "closed",
     },
   };
 
   async function refreshData() {
-    const showRejects = document.querySelector("[name=show_rejects]")?.checked || false;
+    const showRejects =
+      document.querySelector("[name=show_rejects]")?.checked || false;
     try {
       const r = await fetch(`/api/jobs.json?show_rejects=${showRejects}`);
       const data = await r.json();
       if (window._jiaGrid) {
         window._jiaGrid.setGridOption("rowData", data);
-        document.getElementById("grid-count").textContent = `${data.length} jobs`;
+        document.getElementById("grid-count").textContent =
+          `${data.length} jobs`;
       }
     } catch (e) {
       console.error("Failed to load jobs:", e);

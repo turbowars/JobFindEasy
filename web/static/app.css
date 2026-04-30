@@ -609,6 +609,36 @@ tr.row.selected {
 }
 .status-chip .status-glyph { font-size: 10px; opacity: 0.9; }
 
+/* Interactive status chip in the AG Grid: native <select> overlaid on the
+ * chip captures the click and opens the browser's dropdown picker. The
+ * select is invisible but covers the chip exactly. Subtle hover hint
+ * (slightly stronger border) tells the user the chip is clickable. */
+.status-chip-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+.status-chip-wrapper:hover .status-chip {
+  border-color: currentColor;
+  filter: brightness(1.15);
+}
+.status-chip-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  /* let the parent cell handle truncation */
+  appearance: none;
+  -webkit-appearance: none;
+}
+
 .status-new          { color: rgba(232, 232, 232, 0.38); }
 .status-shortlisted  { color: rgba(232, 232, 232, 0.62); }
 .status-applying     { color: #10b981; background: rgba(16, 185, 129, 0.10); }

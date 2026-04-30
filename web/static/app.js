@@ -284,26 +284,78 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Apply with Claude — flips status to 'applying' then opens the URL in a
-// new tab. Session-brief generation is a follow-up PR.
-document.addEventListener("click", async (e) => {
-  const btn = e.target.closest("[data-action='apply-with-claude']");
-  if (!btn) return;
-  e.preventDefault();
-  const hash = btn.dataset.hash;
-  const url = btn.dataset.url;
+// Single source of truth for "mark this job as applying and refresh the UI."
+// Used by:
+//   - the "Apply with Claude" detail-pane button (handler below)
+//   - the AG Grid URL cell renderer (links open in new tab AND mark applying)
+// Returns a Promise so callers can await UI refresh if they need to. Errors
+// surface as a flash message; the function never throws to its caller.
+async function markApplying(hash) {
+  if (!hash) return;
+  let payload;
   try {
     const r = await fetch(`/actions/apply/${hash}`, { method: "POST" });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    payload = await r.json();
   } catch (err) {
     flashMessage("Apply transition failed: " + err.message);
     return;
   }
-  htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
+  // Server only flips status when current state is new/shortlisted; for
+  // jobs already further along the pipeline it's a no-op so we keep the UI
+  // quiet rather than re-rendering the whole grid for nothing.
+  if (!payload.transitioned) {
+    flashMessage(`already ${payload.status} — keeping current status`);
+    return;
+  }
+  if (window._jiaSelectedHash === hash) {
+    htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
+  }
   if (typeof window.jia_refreshGrid === "function") window.jia_refreshGrid();
   htmx.ajax("GET", "/partials/badges", { target: "#badges", swap: "innerHTML" });
-  if (url) window.open(url, "_blank", "noopener");
   flashMessage("▶ status: applying");
+}
+window.jia_markApplying = markApplying;
+
+// Generic status transition called from the AG Grid status chip's overlay
+// <select>. `value` is either a plain status ("new", "applying", ...) or
+// a flattened "closed:<reason>" combo. The server validates the transition
+// and clears closed_reason when status != closed.
+async function setStatus(hash, value, selectEl) {
+  if (!hash || !value) return;
+  let status = value;
+  let reason = "";
+  if (value.startsWith("closed:")) {
+    status = "closed";
+    reason = value.slice("closed:".length);
+  }
+  const fd = new FormData();
+  fd.append("status", status);
+  if (reason) fd.append("closed_reason", reason);
+  try {
+    const r = await fetch(`/actions/status/${hash}`, { method: "POST", body: fd });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  } catch (err) {
+    flashMessage("status update failed: " + err.message);
+    return;
+  }
+  if (window._jiaSelectedHash === hash) {
+    htmx.ajax("GET", `/partials/detail/${hash}`, { target: "#detail", swap: "innerHTML" });
+  }
+  if (typeof window.jia_refreshGrid === "function") window.jia_refreshGrid();
+  htmx.ajax("GET", "/partials/badges", { target: "#badges", swap: "innerHTML" });
+  flashMessage(`status: ${status}${reason ? " · " + reason.replace(/_/g, " ") : ""}`);
+}
+window.jia_setStatus = setStatus;
+
+// Apply with Claude — marks applying then opens the URL in a new tab.
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-action='apply-with-claude']");
+  if (!btn) return;
+  e.preventDefault();
+  await markApplying(btn.dataset.hash);
+  const url = btn.dataset.url;
+  if (url) window.open(url, "_blank", "noopener");
 });
 
 // --------------------------------------------------------------------------

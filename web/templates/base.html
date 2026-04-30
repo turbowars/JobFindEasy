@@ -43,8 +43,8 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.4/styles/ag-theme-quartz.css">
   <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.3.4/dist/ag-grid-community.min.js"></script>
 
-  <!-- Layout grid + minor overrides (versioned to defeat aggressive caching) -->
-  <link rel="stylesheet" href="/static/app.css?v=7">
+  <!-- Layout grid + minor overrides (auto-versioned by file mtime). -->
+  <link rel="stylesheet" href="{{ static_url('app.css') }}">
 
   <!-- HTMX -->
   <script src="https://unpkg.com/htmx.org@2.0.4"
@@ -55,6 +55,6 @@
   <main class="jia-app">
     {% block body %}{% endblock %}
   </main>
-  <script src="/static/app.js" defer></script>
+  <script src="{{ static_url('app.js') }}" defer></script>
 </body>
 </html>

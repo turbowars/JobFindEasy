@@ -292,3 +292,91 @@ def test_adjacency_tail_cap_is_enforced():
     assert len(tail.items) == _ADJACENCY_TAIL_CAP
     assert tail.items[0] == "Tool0"
     assert tail.items[-1] == f"Tool{_ADJACENCY_TAIL_CAP - 1}"
+
+
+# ---------------------------------------------------------------------------
+# 11. /actions/apply preserves progressed pipeline states
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "starting_status,should_transition",
+    [
+        ("new", True),
+        ("shortlisted", True),
+        ("applying", False),
+        ("applied", False),  # CRITICAL: don't demote
+        ("interviewing", False),  # CRITICAL: don't demote
+        ("offer", False),  # CRITICAL: don't demote
+        ("closed", False),
+    ],
+)
+def test_apply_action_preserves_progressed_states(monkeypatch, starting_status, should_transition):
+    """Clicking the grid URL link OR the 'Apply with Claude' button on a job
+    already past the early stages must NOT demote it back to 'applying'.
+    Bug we just shipped: /actions/apply unconditionally flipped status to
+    'applying', so a user re-opening a JD link on an interview-stage job
+    silently lost their pipeline state."""
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from web import app as web_app
+
+    set_status_calls = []
+    monkeypatch.setattr(
+        db_module,
+        "get_job",
+        lambda h: {"hash": h, "status": starting_status, "url": "https://x.example/y"},
+    )
+    monkeypatch.setattr(
+        db_module,
+        "set_status",
+        lambda h, s, *a, **kw: set_status_calls.append((h, s)),
+    )
+
+    client = TestClient(web_app.app)
+    r = client.post("/actions/apply/abc123")
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["transitioned"] is should_transition
+    if should_transition:
+        assert set_status_calls == [("abc123", "applying")]
+        assert payload["status"] == "applying"
+    else:
+        assert set_status_calls == [], (
+            f"must NOT have called set_status for status={starting_status}"
+        )
+        assert payload["status"] == starting_status
+
+
+# ---------------------------------------------------------------------------
+# 12. Status transition via grid chip dropdown (incl. closed:<reason>)
+# ---------------------------------------------------------------------------
+def test_action_status_accepts_closed_with_reason(monkeypatch):
+    """The grid's status chip dropdown POSTs `status=closed&closed_reason=...`
+    in one shot. /actions/status must accept the form and forward both
+    fields to db.set_status. Bug-shaped: forgetting to pass closed_reason
+    silently ghosts a job without the reason, polluting the pipeline view."""
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from web import app as web_app
+
+    set_status_calls = []
+    monkeypatch.setattr(db_module, "get_job", lambda h: {"hash": h, "status": "applied"})
+    monkeypatch.setattr(
+        db_module,
+        "set_status",
+        lambda h, s, *a, **kw: set_status_calls.append((h, s, a, kw)),
+    )
+
+    client = TestClient(web_app.app)
+    r = client.post(
+        "/actions/status/abc123",
+        data={"status": "closed", "closed_reason": "ghosted"},
+    )
+    assert r.status_code == 204
+    assert len(set_status_calls) == 1
+    h, status, args, _ = set_status_calls[0]
+    assert h == "abc123"
+    assert status == "closed"
+    # `closed_reason` is the second positional arg to db.set_status
+    assert args == ("ghosted",)
