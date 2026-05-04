@@ -42,6 +42,7 @@ log = logging.getLogger(__name__)
 import mammoth  # noqa: E402  (used by partial_artifacts to render .docx previews)
 
 from src import db, state  # noqa: E402
+from src.apply import build_claude_prompt  # noqa: E402
 from src.cover_letter import (  # noqa: E402
     expected_cover_letter_path,
     expected_cover_sidecar_path,
@@ -897,7 +898,7 @@ def api_jobs_json(show_rejects: bool = False):
 # Terminal states (closed, not_interested, no_sponsorship) are excluded —
 # Claude should never see them.
 _TIER_PRIORITY = {"strong": 0, "possible": 1, "stretch": 2, "skip": 3}
-_STATUS_PRIORITY = {"shortlisted": 0, "new": 1, "applying": 2}
+_STATUS_PRIORITY = {"shortlisted": 0, "new": 1, "applying": 2, "blocked_missing_artifacts": 3}
 _BATCH_SIZE = 5
 
 
@@ -931,6 +932,111 @@ def _build_claude_queue(df) -> list[dict]:
     return active.to_dict(orient="records")
 
 
+def _job_bundle(job_hash: str) -> dict:
+    """One-shot per-job JSON bundle used by Claude-in-Chrome."""
+    job = db.get_job(job_hash)
+    if not job:
+        raise HTTPException(404, "job not found")
+
+    title = job.get("title") or ""
+    company = job.get("company") or ""
+    location = job.get("location") or ""
+    try:
+        rp = existing_resume_path(title, company, location)
+        resume_path = str(rp.absolute()) if rp.exists() else None
+        resume_filename = rp.name if rp.exists() else None
+    except OSError:
+        resume_path = resume_filename = None
+    try:
+        cp = expected_cover_letter_path(title, company)
+        cover_letter_path = str(cp.absolute()) if cp.exists() else None
+        cover_letter_filename = cp.name if cp.exists() else None
+    except OSError:
+        cover_letter_path = cover_letter_filename = None
+
+    scores = None
+    if resume_path:
+        sidecar = Path(resume_path).with_suffix(".scores.json")
+        if sidecar.exists():
+            try:
+                raw = json.loads(sidecar.read_text())
+                scores = {
+                    "ats_match_pct": (raw.get("ats_match") or {}).get("match_pct"),
+                    "hr_score": (raw.get("hr") or {}).get("hr_score"),
+                }
+            except (OSError, json.JSONDecodeError):
+                pass
+
+    cover_letter_content = None
+    try:
+        cs = expected_cover_sidecar_path(title, company)
+        if cs.exists():
+            cover_letter_content = json.loads(cs.read_text())
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    return {
+        "hash": job_hash,
+        "title": title,
+        "company": company,
+        "location": location,
+        "url": job.get("url") or "",
+        "description": job.get("description") or "",
+        "sponsorship_status": job.get("sponsorship_status") or "unknown",
+        "score_total": job.get("score_total"),
+        "tier": job.get("tier") or "",
+        "status": job.get("status") or "new",
+        "status_at": job.get("status_at"),
+        "track": detect_track(title),
+        "artifacts": {
+            "resume_path": resume_path,
+            "resume_filename": resume_filename,
+            "cover_letter_path": cover_letter_path,
+            "cover_letter_filename": cover_letter_filename,
+            "scores": scores,
+        },
+        "cover_letter_content": cover_letter_content,
+        "application_defaults": resume_profile.APPLICATION_DEFAULTS,
+        "actions": {
+            "mark_applied": f"/api/applied/{job_hash}",
+            "mark_no_sponsorship": f"/api/no-sponsorship/{job_hash}",
+            "open_apply_url": job.get("url") or "",
+        },
+    }
+
+
+def _queue_missing_artifacts(job: dict, bundle: dict) -> list[str]:
+    """Queue missing generated docs for one job and return missing kinds."""
+    missing: list[str] = []
+    artifacts = bundle["artifacts"]
+    job_hash = job["hash"]
+    if not artifacts.get("resume_path"):
+        missing.append("resume")
+        if state.pending_started_at(job_hash, "resume") is None:
+            state.mark_pending(job_hash, "resume")
+            state.submit_generation(
+                "resume",
+                job.get("title") or "",
+                job.get("company") or "",
+                job.get("description") or "",
+                location=job.get("location") or "",
+                job_hash=job_hash,
+            )
+    if not artifacts.get("cover_letter_path"):
+        missing.append("cover")
+        if state.pending_started_at(job_hash, "cover") is None:
+            state.mark_pending(job_hash, "cover")
+            state.submit_generation(
+                "cover",
+                job.get("title") or "",
+                job.get("company") or "",
+                job.get("description") or "",
+                location=job.get("location") or "",
+                job_hash=job_hash,
+            )
+    return missing
+
+
 @app.get("/api/queue.json")
 def api_queue_json(limit: int = 25):
     """Ordered actionable queue Claude pops one job at a time from.
@@ -959,6 +1065,64 @@ def api_queue_json(limit: int = 25):
     return JSONResponse({"queue": out, "total": len(full), "returned": len(out)})
 
 
+@app.get("/api/apply/next")
+def api_apply_next():
+    """Return the next application-ready job.
+
+    A job is ready only when both generated artifacts exist on disk. If the
+    next queued job is missing either artifact, queue the missing generation
+    work, mark the row blocked_missing_artifacts, and return no job.
+    """
+    df = db.to_dataframe()
+    queue = _build_claude_queue(df)
+    if not queue:
+        return JSONResponse(
+            {
+                "job": None,
+                "queue_empty": True,
+                "blocked_missing_artifacts": False,
+            }
+        )
+
+    queued = queue[0]
+    job_hash = queued["hash"]
+    job = db.get_job(job_hash)
+    if not job:
+        raise HTTPException(404, "job not found")
+
+    bundle = _job_bundle(job_hash)
+    missing = _queue_missing_artifacts(job, bundle)
+    if missing:
+        db.set_status(job_hash, "blocked_missing_artifacts", None)
+        db.record_application_step(
+            job_hash,
+            "artifact_gate",
+            "blocked_missing_artifacts",
+            ",".join(missing),
+        )
+        return JSONResponse(
+            {
+                "job": None,
+                "queue_empty": False,
+                "blocked_missing_artifacts": True,
+                "hash": job_hash,
+                "missing": missing,
+            }
+        )
+
+    if (job.get("status") or "new") in ("new", "shortlisted", "blocked_missing_artifacts"):
+        db.set_status(job_hash, "applying", None)
+        db.record_application_step(job_hash, "artifact_gate", "ready", "resume,cover")
+        bundle = _job_bundle(job_hash)
+    return JSONResponse(
+        {
+            "job": bundle,
+            "queue_empty": False,
+            "blocked_missing_artifacts": False,
+        }
+    )
+
+
 @app.get("/api/job/{job_hash}.json")
 def api_job_json(job_hash: str):
     """One-shot bundle Claude reads per-iteration. Includes everything
@@ -966,83 +1130,7 @@ def api_job_json(job_hash: str):
     or parsing the cover letter .docx — JD text, absolute artifact paths,
     pre-extracted "why this company" answer, application defaults.
     """
-    job = db.get_job(job_hash)
-    if not job:
-        raise HTTPException(404, "job not found")
-
-    # Artifact paths. Pathological titles (a scraper occasionally captures
-    # a JD paragraph as the title) produce filenames longer than the
-    # filesystem max — the .exists() probe raises OSError ENAMETOOLONG.
-    # Treat those as "no artifact on disk" rather than 500ing the request.
-    title = job.get("title") or ""
-    company = job.get("company") or ""
-    location = job.get("location") or ""
-    try:
-        rp = existing_resume_path(title, company, location)
-        resume_path = str(rp.absolute()) if rp.exists() else None
-        resume_filename = rp.name if rp.exists() else None
-    except OSError:
-        resume_path = resume_filename = None
-    try:
-        cp = expected_cover_letter_path(title, company)
-        cover_letter_path = str(cp.absolute()) if cp.exists() else None
-        cover_letter_filename = cp.name if cp.exists() else None
-    except OSError:
-        cover_letter_path = cover_letter_filename = None
-
-    # Resume scores sidecar (already exists; written by the resume pipeline).
-    scores = None
-    if resume_path:
-        sidecar = Path(resume_path).with_suffix(".scores.json")
-        if sidecar.exists():
-            try:
-                raw = json.loads(sidecar.read_text())
-                scores = {
-                    "ats_match_pct": (raw.get("ats_match") or {}).get("match_pct"),
-                    "hr_score": (raw.get("hr") or {}).get("hr_score"),
-                }
-            except (OSError, json.JSONDecodeError):
-                pass
-
-    # Cover-letter sidecar (new — written by generate_cover_letter).
-    cover_letter_content = None
-    try:
-        cs = expected_cover_sidecar_path(title, company)
-        if cs.exists():
-            cover_letter_content = json.loads(cs.read_text())
-    except (OSError, json.JSONDecodeError):
-        pass
-
-    return JSONResponse(
-        {
-            "hash": job_hash,
-            "title": title,
-            "company": company,
-            "location": location,
-            "url": job.get("url") or "",
-            "description": job.get("description") or "",
-            "sponsorship_status": job.get("sponsorship_status") or "unknown",
-            "score_total": job.get("score_total"),
-            "tier": job.get("tier") or "",
-            "status": job.get("status") or "new",
-            "status_at": job.get("status_at"),
-            "track": detect_track(title),
-            "artifacts": {
-                "resume_path": resume_path,
-                "resume_filename": resume_filename,
-                "cover_letter_path": cover_letter_path,
-                "cover_letter_filename": cover_letter_filename,
-                "scores": scores,
-            },
-            "cover_letter_content": cover_letter_content,
-            "application_defaults": resume_profile.APPLICATION_DEFAULTS,
-            "actions": {
-                "mark_applied": f"/api/applied/{job_hash}",
-                "mark_no_sponsorship": f"/api/no-sponsorship/{job_hash}",
-                "open_apply_url": job.get("url") or "",
-            },
-        }
-    )
+    return JSONResponse(_job_bundle(job_hash))
 
 
 @app.post("/api/applied/{job_hash}")
@@ -1075,236 +1163,9 @@ def api_no_sponsorship(job_hash: str):
 def api_claude_prompt():
     """Self-contained prompt to paste into the Claude-for-Chrome sidebar.
 
-    Teaches Claude an API-first loop: pop next hash from /api/queue.json,
-    fetch /api/job/<hash>.json for the per-job bundle (JD, abs file
-    paths, why_this_company, application_defaults, action URLs), use
-    file_upload directly from data/exports/, POST /api/applied/<hash>
-    after Dheeraj's batch-boundary "go ahead". No UI scraping, no .docx
-    parsing — the API is the contract.
+    The long prompt lives in src.apply.prompt so the route is only transport.
     """
-    appl = resume_profile.APPLICATION_DEFAULTS
-    base = "http://127.0.0.1:8826"
-
-    lines: list[str] = []
-
-    # ── Header ──────────────────────────────────────────────────────────
-    lines.append("You are operating inside Dheeraj's personal job-hunt dashboard.")
-    lines.append(f"Dashboard URL: {base}  (keep this tab open — never navigate it away)")
-    lines.append("")
-    lines.append(
-        "Your job is to apply to every role in the dashboard's actionable "
-        f"queue, top-down, BATCHING {_BATCH_SIZE} JOBS AT A TIME. Within each "
-        f"batch you prep all {_BATCH_SIZE} silently using the JSON APIs below, "
-        "then alert Dheeraj with a compact summary and wait for ONE combined "
-        '"go ahead" before submitting all 5. Do not pause between individual '
-        "jobs during prep."
-    )
-    lines.append("")
-
-    # ── API contract ────────────────────────────────────────────────────
-    lines.append("## API contract")
-    lines.append("")
-    lines.append(
-        "All per-job context comes from JSON. Use `javascript_tool` to "
-        f"`fetch()` these endpoints (they're served by the dashboard at {base}):"
-    )
-    lines.append("")
-    lines.append(
-        f"- **`GET {base}/api/queue.json`** → `{{queue: [{{hash, title, company, score, tier, status, apply_url}}, ...], total, returned}}`. The actionable queue, ordered tier → status → score. Pop the top hash, mark it processed by changing its status (Applied / No Sponsorship), and the next call returns the next job."
-    )
-    lines.append(
-        f'- **`GET {base}/api/job/<hash>.json`** → full per-job bundle: `title`, `company`, `description` (full JD text), `url` (apply URL), `track` (em|ic), `artifacts.resume_path` + `cover_letter_path` (absolute paths on disk — pass directly to `file_upload`), `cover_letter_content.why_this_company` (use VERBATIM for "why this company?" form fields; null means leave blank + flag), `application_defaults` (every personal fact you need), `actions.mark_applied` + `mark_no_sponsorship` (POST URLs).'
-    )
-    lines.append(
-        f'- **`POST {base}/api/applied/<hash>`** → marks the row as Applied. Returns `{{ok: true, status: "applied"}}`.'
-    )
-    lines.append(
-        f'- **`POST {base}/api/no-sponsorship/<hash>`** → marks the row as No Sponsorship. Returns `{{ok: true, status: "no_sponsorship"}}`.'
-    )
-    lines.append("")
-    lines.append(
-        "Read `application_defaults` from each job's JSON for personal facts "
-        "(email, phone, LinkedIn, GitHub, location, pronouns, citizenship, "
-        "work authorization, comp expectation, etc.). It's the single source "
-        "of truth — never hard-code these from anywhere else."
-    )
-    lines.append("")
-
-    # ── Sponsorship rule ─────────────────────────────────────────────────
-    lines.append("## Sponsorship rule")
-    lines.append("")
-    lines.append(f"- Dheeraj's stance: {appl['work_authorization']}")
-    lines.append(
-        "- If the JD explicitly DENIES sponsorship → do NOT apply. "
-        "POST `/api/no-sponsorship/<hash>` and move on."
-    )
-    lines.append(
-        "- If the JD is SILENT on sponsorship → apply anyway. Clarify in "
-        "the form's free-text or recruiter follow-up if asked."
-    )
-    lines.append("")
-
-    # ── Tab discipline ──────────────────────────────────────────────────
-    lines.append("## Tab discipline")
-    lines.append("")
-    lines.append(
-        f"- **Dashboard tab** ({base}) — already open. The dashboard is the "
-        "API host; stay subscribed. NEVER navigate this tab away."
-    )
-    lines.append(
-        "- **Job tab** — a NEW tab per job. Always open the apply URL in a "
-        "new tab (right-click → Open in new tab)."
-    )
-    lines.append("")
-
-    # ── Workflow ────────────────────────────────────────────────────────
-    lines.append(f"## Workflow — process the queue in BATCHES OF {_BATCH_SIZE}")
-    lines.append("")
-    lines.append("**Per-job prep (repeat for each of the next 5 jobs in the queue):**")
-    lines.append("")
-    lines.append(
-        f"1. **Pop the next job.** `fetch('{base}/api/queue.json')`, take "
-        "`queue[0].hash`. If `queue` is empty, you're done — jump to the "
-        "End-of-queue summary."
-    )
-    lines.append(
-        f"2. **Fetch the bundle.** `fetch('{base}/api/job/<hash>.json')`. "
-        "Read `description` for the JD, `application_defaults` for personal "
-        'facts, `cover_letter_content.why_this_company` for the "why this '
-        'company?" answer, `artifacts.resume_path` and '
-        "`artifacts.cover_letter_path` for the absolute file paths."
-    )
-    lines.append(
-        "3. **Sponsorship check.** Scan `description` for explicit denial "
-        'language (e.g. "unable to sponsor", "no visa sponsorship"). '
-        "If found, POST `actions.mark_no_sponsorship` and skip to the next "
-        "queue entry — do NOT continue to step 4."
-    )
-    lines.append(
-        "4. **Open the apply URL** in a NEW tab (`actions.open_apply_url` "
-        "or equivalently the JSON's `url` field). Wait for the Simplify "
-        "Chrome extension to autofill (~5–10s, sometimes longer)."
-    )
-    lines.append(
-        "5. **Verify and fill.** Fix any wrong autofill answers using "
-        '`application_defaults`. Fill remaining text fields. For "why '
-        'this company / role?" use `cover_letter_content.why_this_company` '
-        "VERBATIM (do not paraphrase or expand). For EEO questions, mark "
-        '"Decline to self-identify" when offered. For anything not '
-        "covered by `application_defaults` and not the why-this-company "
-        "field, pick a safe best-guess (or leave blank if no safe guess) "
-        "and **flag it for the batch callout** in step 7. Do not pause "
-        "mid-prep to ask Dheeraj — flag and move on."
-    )
-    lines.append(
-        "6. **Upload artifacts.** Use the `file_upload` tool with "
-        "`paths=[artifacts.resume_path]` (and "
-        "`[artifacts.cover_letter_path]` separately if the form has a "
-        "cover-letter field) and the file-input element ref from "
-        "`read_page` / `find`. Reading directly from `data/exports/` skips "
-        "the Downloads-folder round-trip. If `file_upload` fails (some "
-        "ATS forms wrap the input in custom widgets), fall back to "
-        "drag-and-drop: name the exact filename "
-        "(`artifacts.resume_filename`), wait for Dheeraj to drag it in, "
-        "note in the batch summary which jobs needed the manual drag. If "
-        "either path is `null` in the JSON, flag the job and DO NOT "
-        "submit — generating with a generic resume defeats the point."
-    )
-    lines.append(
-        "7. **Stop just before Submit.** Do NOT click submit. Move to "
-        "the next queue entry. The form stays in its filled state; "
-        "Dheeraj reviews + you submit during step 8."
-    )
-    lines.append("")
-    lines.append(f"**Batch boundary (after {_BATCH_SIZE} jobs are prepped):**")
-    lines.append("")
-    lines.append("8. ALERT Dheeraj with this exact two-section summary:")
-    lines.append("")
-    lines.append("    ```")
-    lines.append(f"    Batch <N>: {_BATCH_SIZE} jobs prepped, ready to submit")
-    lines.append("    ----------------------------------------------------------")
-    lines.append(
-        "    [1] <Company> — <Title>   • resume ✓ • cover ✓/—  • <K> free-text answers   • flagged: <thing or —>"
-    )
-    lines.append("    [2] ...")
-    lines.append("    [3] ...")
-    lines.append("    [4] ...")
-    lines.append("    [5] ...")
-    lines.append("")
-    lines.append("    Needs your eyes")
-    lines.append("    ---------------")
-    lines.append("    [1] <field name>: <best-guess Claude filled> — <why uncertain>")
-    lines.append("    [2] <field name>: blank — <reason>")
-    lines.append("    (omit this section if no flags)")
-    lines.append("    ```")
-    lines.append("")
-    lines.append(
-        '    Wait for an explicit "go ahead" reply (or per-job overrides '
-        'like "go on 1, 2, 4 — skip 3 and 5"). NEVER click Submit without '
-        "that confirmation."
-    )
-    lines.append("")
-    lines.append(
-        "9. **Submit + mark applied.** For each approved job: click "
-        "Submit on the job tab, then "
-        "`fetch(actions.mark_applied, {method: 'POST'})` from the "
-        "dashboard tab. The dashboard's badges + grid update "
-        "automatically via the existing OOB swaps."
-    )
-    lines.append("")
-    lines.append("10. Loop back to step 1 for the next batch.")
-    lines.append("")
-
-    # ── End summary ────────────────────────────────────────────────────
-    lines.append("## End-of-queue summary (after the final batch)")
-    lines.append("")
-    lines.append("Post a single message containing:")
-    lines.append("")
-    lines.append("- **Total submitted** — count.")
-    lines.append(
-        "- **Total skipped + reasons** — grouped by reason (sponsorship-denied, form-broken, missing-data, manual-skip)."
-    )
-    lines.append("- **Total time spent** — elapsed wall-clock from batch 1 start.")
-    lines.append(
-        "- **Follow-up companies** — any job where Claude flagged something Dheeraj should personally revisit (e.g. recruiter contact left in the form, unusual question, take-home assignment)."
-    )
-    lines.append(
-        "- **Questions Claude had to guess on** — a deduplicated list of "
-        'every form question that wasn\'t covered by the "About Dheeraj" '
-        "context. This list feeds back into `src/resume/profile.py` "
-        "`APPLICATION_DEFAULTS` for the next session — Dheeraj will add "
-        "answers there so future batches don't need to flag them again."
-    )
-    lines.append("")
-
-    # ── Hard rules ────────────────────────────────────────────────────
-    lines.append("## Hard rules")
-    lines.append(
-        '- NEVER submit any job without Dheeraj\'s explicit "go ahead" at the batch boundary.'
-    )
-    lines.append("- NEVER navigate the dashboard tab away from http://127.0.0.1:8826.")
-    lines.append("- NEVER invent personal data. Best-guess + flag is OK; fabrication is not.")
-    lines.append(
-        "- If a JD explicitly DENIES sponsorship, set the row's status to **No Sponsorship** and do NOT apply."
-    )
-    lines.append(
-        "- If a JD is SILENT on sponsorship, apply anyway (Dheeraj's stance: clarify in the form's free-text or recruiter follow-up)."
-    )
-    lines.append(
-        '- Do not announce "starting job N" or "starting batch N" between jobs. Just keep moving.'
-    )
-    lines.append("")
-
-    # ── Closing pointer ───────────────────────────────────────────────
-    lines.append("## Start now")
-    lines.append("")
-    lines.append(
-        "Click **◎ Target** in the dashboard sidebar. The top 5 rows of the "
-        "filtered grid are batch 1. Open the detail pane on row 1 and start "
-        "at Workflow Step 1."
-    )
-
-    body = "\n".join(lines)
+    body = build_claude_prompt(resume_profile.APPLICATION_DEFAULTS, batch_size=_BATCH_SIZE)
     return Response(content=body, media_type="text/plain; charset=utf-8")
 
 

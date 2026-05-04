@@ -1977,6 +1977,175 @@ def test_cover_letter_sidecar_why_composition(tmp_path, hook, fit, expected):
     assert payload["why_this_company"] == expected
 
 
+# ---------------------------------------------------------------------------
+# Apply automation persistence + /api/apply/next
+# ---------------------------------------------------------------------------
+def test_db_init_creates_apply_automation_tables(monkeypatch, tmp_path):
+    """Apply automation needs durable state, not in-memory globals. init_db()
+    must create the five persistent tables requested for application runs,
+    steps, reusable questions/answers, and generated artifacts."""
+    from src import db as db_module
+
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "jobs.db")
+    db_module.init_db()
+
+    with db_module.conn() as c:
+        rows = c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    tables = {r["name"] for r in rows}
+    assert {
+        "application_runs",
+        "application_steps",
+        "application_questions",
+        "application_answers",
+        "artifacts",
+    }.issubset(tables)
+
+
+def test_artifact_upsert_persists_latest_path(monkeypatch, tmp_path):
+    """Artifact rows are keyed by (job_hash, kind), so regenerating a resume
+    updates the existing row instead of creating conflicting stale paths."""
+    from src import db as db_module
+
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "jobs.db")
+    db_module.init_db()
+
+    db_module.upsert_artifact("abc123", "resume", "/tmp/old.docx", "old.docx", "{}")
+    db_module.upsert_artifact("abc123", "resume", "/tmp/new.docx", "new.docx", '{"v":2}')
+
+    artifacts = db_module.get_artifacts("abc123")
+    assert set(artifacts.keys()) == {"resume"}
+    assert artifacts["resume"]["path"] == "/tmp/new.docx"
+    assert artifacts["resume"]["filename"] == "new.docx"
+    assert artifacts["resume"]["metadata_json"] == '{"v":2}'
+
+
+def test_status_includes_blocked_missing_artifacts():
+    """The apply queue marks rows blocked when generated docs are missing.
+    That status must be valid before /api/apply/next can set it."""
+    from src.status import ACTIVE, STATUS_GLYPH, STATUS_LABEL, is_valid_status
+
+    assert is_valid_status("blocked_missing_artifacts")
+    assert "blocked_missing_artifacts" in ACTIVE
+    assert STATUS_LABEL["blocked_missing_artifacts"]
+    assert STATUS_GLYPH["blocked_missing_artifacts"]
+
+
+def test_claude_prompt_builder_mentions_apply_next():
+    """The extracted prompt module is now the contract owner. Pin the new
+    /api/apply/next flow so the route can't drift back to the giant inline
+    string or the older queue-first instructions."""
+    from src.apply.prompt import build_claude_prompt
+    from src.resume import profile as resume_profile
+
+    body = build_claude_prompt(resume_profile.APPLICATION_DEFAULTS, batch_size=5)
+    assert "/api/apply/next" in body
+    assert "blocked_missing_artifacts" in body
+    assert "/api/job/<hash>.json" in body
+    assert "BATCHES OF 5" in body.upper()
+    assert "application_defaults" in body
+
+
+def test_api_apply_next_blocks_and_queues_missing_artifacts(monkeypatch, tmp_path):
+    """If the next queued job lacks resume/cover artifacts, /api/apply/next
+    must not return it for submission. It queues missing docs and marks the
+    job blocked_missing_artifacts."""
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from src import state as state_module
+    from src.cover_letter import pipeline as cover_pipeline
+    from src.resume import pipeline as resume_pipeline
+    from web import app as web_app
+
+    monkeypatch.setattr(resume_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cover_pipeline, "OUTPUT_DIR", tmp_path)
+    row = _stub_one_job_df(monkeypatch)
+
+    queued = []
+    statuses = []
+    steps = []
+    monkeypatch.setattr(state_module, "pending_started_at", lambda *_a: None)
+    monkeypatch.setattr(state_module, "mark_pending", lambda h, k: queued.append(("pending", h, k)))
+    monkeypatch.setattr(
+        state_module,
+        "submit_generation",
+        lambda kind, title, company, jd_text, **kw: queued.append((kind, kw.get("job_hash"))),
+    )
+    monkeypatch.setattr(
+        db_module,
+        "set_status",
+        lambda h, s, reason=None: statuses.append((h, s, reason)),
+    )
+    monkeypatch.setattr(
+        db_module,
+        "record_application_step",
+        lambda h, step, status, detail="", run_id=None: steps.append((h, step, status, detail)),
+    )
+
+    client = TestClient(web_app.app)
+    r = client.get("/api/apply/next")
+    assert r.status_code == 200
+    body = r.json()
+
+    assert body["job"] is None
+    assert body["queue_empty"] is False
+    assert body["blocked_missing_artifacts"] is True
+    assert body["hash"] == row["hash"]
+    assert set(body["missing"]) == {"resume", "cover"}
+    assert ("abc123", "blocked_missing_artifacts", None) in statuses
+    assert ("resume", "abc123") in queued
+    assert ("cover", "abc123") in queued
+    assert steps[-1] == ("abc123", "artifact_gate", "blocked_missing_artifacts", "resume,cover")
+
+
+def test_api_apply_next_returns_ready_job_when_artifacts_exist(monkeypatch, tmp_path):
+    """When both artifacts exist, /api/apply/next returns the same per-job
+    bundle Claude needs and moves early-stage rows into applying."""
+    from fastapi.testclient import TestClient
+
+    from src import db as db_module
+    from src.cover_letter import expected_cover_letter_path
+    from src.cover_letter import pipeline as cover_pipeline
+    from src.resume import existing_resume_path
+    from src.resume import pipeline as resume_pipeline
+    from web import app as web_app
+
+    monkeypatch.setattr(resume_pipeline, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cover_pipeline, "OUTPUT_DIR", tmp_path)
+    row = _stub_one_job_df(monkeypatch)
+
+    rp = existing_resume_path(row["title"], row["company"], row["location"])
+    rp.write_bytes(b"fake docx")
+    cp = expected_cover_letter_path(row["title"], row["company"])
+    cp.write_bytes(b"fake docx")
+
+    statuses = []
+    steps = []
+    monkeypatch.setattr(
+        db_module,
+        "set_status",
+        lambda h, s, reason=None: statuses.append((h, s, reason)),
+    )
+    monkeypatch.setattr(
+        db_module,
+        "record_application_step",
+        lambda h, step, status, detail="", run_id=None: steps.append((h, step, status, detail)),
+    )
+
+    client = TestClient(web_app.app)
+    r = client.get("/api/apply/next")
+    assert r.status_code == 200
+    body = r.json()
+
+    assert body["blocked_missing_artifacts"] is False
+    assert body["queue_empty"] is False
+    assert body["job"]["hash"] == row["hash"]
+    assert body["job"]["artifacts"]["resume_path"] == str(rp.absolute())
+    assert body["job"]["artifacts"]["cover_letter_path"] == str(cp.absolute())
+    assert statuses == [("abc123", "applying", None)]
+    assert steps == [("abc123", "artifact_gate", "ready", "resume,cover")]
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # /api/jobs.json — has_resume / has_cover_letter booleans drive the grid's
 # per-row Generate / Regenerate buttons. If these stop being computed, every

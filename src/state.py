@@ -123,6 +123,27 @@ def submit_generation(
                     c,
                     err,
                 )
+                return
+            try:
+                result = f.result()
+                path = result[0] if isinstance(result, tuple) and result else None
+                if path:
+                    from . import db
+
+                    db.upsert_artifact(
+                        hash,
+                        k,
+                        str(path.absolute()),
+                        path.name,
+                    )
+                    db.record_application_step(
+                        hash,
+                        f"generate_{k}",
+                        "completed",
+                        path.name,
+                    )
+            except Exception as e:
+                log.warning("[%s] artifact recording failed for %s @ %s: %s", label, t, c, e)
 
         fut.add_done_callback(_on_done)
 

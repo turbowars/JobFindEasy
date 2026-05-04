@@ -57,6 +57,64 @@ CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS application_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    batch_size INTEGER NOT NULL DEFAULT 5,
+    summary TEXT
+);
+
+CREATE TABLE IF NOT EXISTS application_steps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER,
+    job_hash TEXT NOT NULL,
+    step TEXT NOT NULL,
+    status TEXT NOT NULL,
+    detail TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES application_runs(id),
+    FOREIGN KEY(job_hash) REFERENCES jobs(hash)
+);
+
+CREATE TABLE IF NOT EXISTS application_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    normalized_question TEXT NOT NULL UNIQUE,
+    question_text TEXT NOT NULL,
+    field_type TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS application_answers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question_id INTEGER NOT NULL,
+    answer_text TEXT NOT NULL,
+    confidence REAL,
+    source TEXT NOT NULL DEFAULT 'user',
+    usage_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(question_id) REFERENCES application_questions(id)
+);
+
+CREATE TABLE IF NOT EXISTS artifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_hash TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    path TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    metadata_json TEXT,
+    UNIQUE(job_hash, kind),
+    FOREIGN KEY(job_hash) REFERENCES jobs(hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_application_steps_job ON application_steps(job_hash, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_artifacts_job_kind ON artifacts(job_hash, kind);
 """
 
 
@@ -132,6 +190,7 @@ _STATUS_PRIORITY = {
     "interviewing": 6,
     "applied": 5,
     "applying": 4,
+    "blocked_missing_artifacts": 4,
     "shortlisted": 3,
     "new": 2,
     "closed": 1,
@@ -451,6 +510,65 @@ def sweep_ghosted(days: int) -> int:
 def set_notes(job_hash: str, notes: str) -> None:
     with conn() as c:
         c.execute("UPDATE jobs SET notes=? WHERE hash=?", (notes, job_hash))
+
+
+def record_application_step(
+    job_hash: str,
+    step: str,
+    status: str,
+    detail: str = "",
+    run_id: int | None = None,
+) -> None:
+    """Append an apply-automation event for auditability."""
+    from datetime import datetime
+
+    with conn() as c:
+        c.execute(
+            """INSERT INTO application_steps
+               (run_id, job_hash, step, status, detail, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (run_id, job_hash, step, status, detail, datetime.utcnow().isoformat()),
+        )
+
+
+def upsert_artifact(
+    job_hash: str,
+    kind: str,
+    path: str,
+    filename: str,
+    metadata_json: str = "",
+) -> None:
+    """Persist the latest generated artifact path for a job.
+
+    `kind` is intentionally plain text ("resume", "cover") so future
+    artifact types can be added without schema churn.
+    """
+    from datetime import datetime
+
+    now = datetime.utcnow().isoformat()
+    with conn() as c:
+        c.execute(
+            """INSERT INTO artifacts
+               (job_hash, kind, path, filename, created_at, updated_at, metadata_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(job_hash, kind) DO UPDATE SET
+                   path = excluded.path,
+                   filename = excluded.filename,
+                   updated_at = excluded.updated_at,
+                   metadata_json = excluded.metadata_json""",
+            (job_hash, kind, path, filename, now, now, metadata_json),
+        )
+
+
+def get_artifacts(job_hash: str) -> dict[str, dict]:
+    """Return latest artifacts keyed by kind for one job."""
+    with conn() as c:
+        cur = c.execute(
+            """SELECT kind, path, filename, created_at, updated_at, metadata_json
+               FROM artifacts WHERE job_hash = ?""",
+            (job_hash,),
+        )
+        return {row["kind"]: dict(row) for row in cur.fetchall()}
 
 
 def get_strong_fits_today(min_score: int = 80) -> list[dict]:

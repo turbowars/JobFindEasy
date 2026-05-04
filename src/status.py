@@ -20,6 +20,7 @@ STATUSES = (
     "not_interested",  # terminal — user triaged out without engaging
     "no_sponsorship",  # terminal — sponsorship denied / not offered
     "shortlisted",  # manually saved for later
+    "blocked_missing_artifacts",  # apply automation paused until resume + cover exist
     "applying",  # apply flow in progress (form open)
     "applied",  # form submitted
     "interviewing",  # any active back-and-forth — recruiter, HM, panel
@@ -40,6 +41,7 @@ STATUS_LABEL = {
     "not_interested": "Not Interested",
     "no_sponsorship": "No Sponsorship",
     "shortlisted": "Shortlisted",
+    "blocked_missing_artifacts": "Blocked: Missing Artifacts",
     "applying": "Applying",
     "applied": "Applied",
     "interviewing": "Interviewing",
@@ -53,6 +55,7 @@ STATUS_GLYPH = {
     "not_interested": "⊘",
     "no_sponsorship": "∅",
     "shortlisted": "★",
+    "blocked_missing_artifacts": "□",
     "applying": "▶",
     "applied": "✓",
     "interviewing": "⟳",
@@ -60,7 +63,14 @@ STATUS_GLYPH = {
     "closed": "—",
 }
 
-ACTIVE = {"shortlisted", "applying", "applied", "interviewing", "offer"}
+ACTIVE = {
+    "shortlisted",
+    "blocked_missing_artifacts",
+    "applying",
+    "applied",
+    "interviewing",
+    "offer",
+}
 TERMINAL = {"closed", "not_interested", "no_sponsorship"}
 
 # Sweep window for "applied" rows that have heard nothing back.

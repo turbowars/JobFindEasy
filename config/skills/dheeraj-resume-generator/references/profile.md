@@ -41,7 +41,7 @@ Trim to 10 to 14 lines per JD; reorder so the categories the JD cares about most
 
 **Languages:** TypeScript, JavaScript (ES2023), Go, Python, HTML5, CSS3, SQL, GraphQL, Bash, C#, Java
 
-**Frontend Frameworks & Libraries:** React 18, Next.js 14 (App Router, Server Actions, RSC, ISR, SSR, SSG), React Server Components, Angular (2 through 20), AngularJS, Redux, Redux Toolkit, TanStack Query, Zustand, RxJS, NgRx, Vue.js, Svelte, jQuery, Knockout.js, Handlebars, Web Components, Lit, Stencil, Solidity, web3
+**Frontend Frameworks & Libraries:** React 18, Angular (2 through 20), Next.js 14 (App Router, Server Actions, RSC, ISR, SSR, SSG), React Server Components, AngularJS, Redux, Redux Toolkit, TanStack Query, Zustand, RxJS, NgRx, Vue.js, Svelte, jQuery, Knockout.js, Handlebars, Web Components, Lit, Stencil
 
 **Build Tools, Bundlers & Monorepos:** Vite, Webpack 5, Turbopack, Rollup, esbuild, Module Federation, Nx, Turborepo, Lerna, pnpm workspaces, Yarn workspaces, Grunt, Gulp, Babel, SWC, TypeScript Project References
 
@@ -73,17 +73,20 @@ Trim to 10 to 14 lines per JD; reorder so the categories the JD cares about most
 
 **Architecture Patterns:** Micro-frontends, Module Federation, event-driven systems, CQRS, distributed systems, multi-tenancy, edge computing, SSR/SSG/ISR, BFF, hexagonal architecture, DDD, clean architecture, functional programming, reactive programming
 
+**Web3 & Blockchain:** Solidity, Ethereum, Polygon, smart contract development and auditing, ERC-20 / ERC-721 / ERC-1155 token standards, NFTs, web3.js, ethers.js, Hardhat, Foundry, MetaMask integration, WalletConnect, Web3 authentication (sign-in with Ethereum, EIP-4361), IPFS, decentralized storage, on-chain event indexing (The Graph), DeFi protocol patterns
+
 **Collaboration & Delivery:** Technical RFCs, architecture reviews, code reviews, design reviews, cross-geo team coordination, Agile (Scrum, Kanban), SAFe, Jira, Confluence, Linear, Notion, stakeholder communication, hiring loops, onboarding playbooks, mentorship at staff and senior IC levels
 
 ### Management track
 
 - **Engineering Leadership:** People management, hiring, mentorship, technical strategy, cross-functional alignment, roadmap ownership, stakeholder communication
-- **Frontend:** React, TypeScript, JavaScript, Angular, Vue, Redux, Zustand, Zod, Module Federation, micro-frontends, Next.js, SPA architecture
+- **Frontend:** React, Angular, TypeScript, JavaScript, Vue, Redux, mobx, Zustand, Zod, Module Federation, micro-frontends, Next.js, SPA architecture
 - **Backend & Languages:** Node.js, Python (FastAPI, Flask), Java (Spring, Spring Boot), Go, REST, GraphQL, gRPC, event-driven services
-- **Platform:** CI/CD, developer tooling, design systems, scalable architecture, distributed systems, BFF patterns
+- **Platform:** CI/CD, github acyions, jenkins, developer tooling, design systems, scalable architecture, distributed systems, BFF patterns
 - **Cloud & Infra:** AWS (Lambda, ECS, S3, EventBridge), GCP, Docker, Kubernetes, Terraform, security, compliance (SOC 2, GLBA, CCPA)
 - **DevOps & Data:** Docker, Kubernetes, Helm, GitHub Actions, ArgoCD, Apache Airflow, data pipeline orchestration, observability (Datadog, OpenTelemetry)
 - **AI / LLM:** Anthropic Claude API, OpenAI API, MCP, RAG architectures, semantic search, vector databases, embeddings, agentic workflows, AI-augmented developer workflows
+- **Web3 & Blockchain:** Solidity, Ethereum, Polygon, smart contracts, ERC-20 / ERC-721 / ERC-1155, NFTs, MetaMask, WalletConnect, Web3 authentication, DeFi protocol patterns
 - **Process & Delivery:** Agile, Scrum, Kanban, SAFe, SDLC, KPI dashboards, hiring loops, onboarding playbooks
 
 ---
@@ -328,7 +331,7 @@ Use verbatim when tailoring Management-track resumes.
 
 ## Education & Certifications
 
-- Master of Business Administration, Digital Entrepreneurship, Strayer University, Herndon, VA
+- Master of Business Administration, Digital Entrepreneurship, Strayer University, VA
 - Bachelor of Technology, Computer Science, Mahatma Gandhi Institute of Technology, India
 - AI-Driven Leadership, Stanford University
 - Certified Scrum Master (CSM), Scrum Alliance
