@@ -709,6 +709,15 @@ def action_autoscrape_toggle(enabled: str = Form(...)):
     return Response(status_code=204, headers=_hx_trigger("jia-autoscrape-changed"))
 
 
+@app.post("/actions/autoscrape/run")
+def action_autoscrape_run():
+    s = state.get_autoscrape_state()
+    with state.AUTOSCRAPE_LOCK:
+        s["enabled"] = True
+        s["force_run_requested"] = True
+    return Response(status_code=204, headers=_hx_trigger("jia-autoscrape-changed"))
+
+
 @app.post("/actions/autoscrape/config")
 def action_autoscrape_config(interval_seconds: int = Form(...), score_limit: int = Form(...)):
     s = state.get_autoscrape_state()

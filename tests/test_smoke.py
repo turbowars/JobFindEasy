@@ -1907,6 +1907,68 @@ def test_api_applied_alias_flips_status(monkeypatch):
     assert r.status_code == 404
 
 
+def test_autoscrape_state_defaults_to_enabled(monkeypatch):
+    """Fresh process state should auto-arm autoscrape so reopening the page
+    doesn't require flipping the toggle again."""
+    from src import state as state_module
+
+    class FakeThread:
+        def __init__(self, target, args, daemon, name):
+            self.target = target
+            self.args = args
+            self.daemon = daemon
+            self.name = name
+            self.started = False
+
+        def start(self):
+            self.started = True
+
+        def is_alive(self):
+            return self.started
+
+    monkeypatch.setattr(state_module, "_AUTO_STATE", None)
+    monkeypatch.setattr(state_module, "_AUTO_THREAD", None)
+    monkeypatch.setattr(state_module.threading, "Thread", FakeThread)
+
+    autoscrape = state_module.get_autoscrape_state()
+
+    assert autoscrape["enabled"] is True
+    assert autoscrape["force_run_requested"] is False
+    assert state_module._AUTO_THREAD is not None
+    assert state_module._AUTO_THREAD.started is True
+
+
+def test_autoscrape_run_action_queues_immediate_cycle(monkeypatch):
+    """Manual run-now should arm autoscrape and request a one-shot cycle,
+    even if the regular interval has not elapsed yet."""
+    from fastapi.testclient import TestClient
+
+    from web import app as web_app
+
+    autoscrape = {
+        "enabled": False,
+        "interval_seconds": 21600,
+        "score_limit": 50,
+        "last_run_at": 123.0,
+        "last_started_at": None,
+        "last_run_summary": None,
+        "last_error": None,
+        "next_run_at": 456.0,
+        "in_progress": False,
+        "force_run_requested": False,
+        "run_count": 1,
+    }
+
+    monkeypatch.setattr(web_app.state, "get_autoscrape_state", lambda: autoscrape)
+
+    client = TestClient(web_app.app)
+    r = client.post("/actions/autoscrape/run")
+
+    assert r.status_code == 204
+    assert autoscrape["enabled"] is True
+    assert autoscrape["force_run_requested"] is True
+
+
 def test_cover_letter_sidecar_written_on_generate(tmp_path, monkeypatch):
     """The cover-letter pipeline now writes a .json sidecar next to the
     .docx with structured content (track, why_this_company, bullets).

@@ -320,12 +320,16 @@ def _autoscrape_loop(state: dict) -> None:
                     state["enabled"]
                     and not state["in_progress"]
                     and (
-                        state["last_run_at"] is None
-                        or now - state["last_run_at"] >= state["interval_seconds"]
+                        state["force_run_requested"]
+                        or (
+                            state["last_run_at"] is None
+                            or now - state["last_run_at"] >= state["interval_seconds"]
+                        )
                     )
                 )
                 score_limit = state["score_limit"]
                 if should_run:
+                    state["force_run_requested"] = False
                     state["in_progress"] = True
                     state["last_started_at"] = time.time()
             if should_run:
@@ -351,7 +355,7 @@ def get_autoscrape_state() -> dict:
     with AUTOSCRAPE_LOCK:
         if _AUTO_STATE is None:
             _AUTO_STATE = {
-                "enabled": False,
+                "enabled": True,
                 "interval_seconds": 21600,  # 6 hours default
                 "score_limit": 50,
                 "last_run_at": None,
@@ -360,6 +364,7 @@ def get_autoscrape_state() -> dict:
                 "last_error": None,
                 "next_run_at": None,
                 "in_progress": False,
+                "force_run_requested": False,
                 "run_count": 0,
             }
         if _AUTO_THREAD is None or not _AUTO_THREAD.is_alive():

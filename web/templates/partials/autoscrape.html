@@ -2,6 +2,14 @@
 
 <div class="space-y-2.5">
 
+  <sl-button size="small"
+             variant="primary"
+             {{ 'disabled' if s.in_progress else '' }}
+             hx-post="/actions/autoscrape/run"
+             hx-swap="none">
+    Run now
+  </sl-button>
+
   <sl-switch size="small"
              {{ 'checked' if s.enabled else '' }}
              hx-post="/actions/autoscrape/toggle"

@@ -82,7 +82,7 @@ Trim to 10 to 14 lines per JD; reorder so the categories the JD cares about most
 - **Engineering Leadership:** People management, hiring, mentorship, technical strategy, cross-functional alignment, roadmap ownership, stakeholder communication
 - **Frontend:** React, Angular, TypeScript, JavaScript, Vue, Redux, mobx, Zustand, Zod, Module Federation, micro-frontends, Next.js, SPA architecture
 - **Backend & Languages:** Node.js, Python (FastAPI, Flask), Java (Spring, Spring Boot), Go, REST, GraphQL, gRPC, event-driven services
-- **Platform:** CI/CD, github acyions, jenkins, developer tooling, design systems, scalable architecture, distributed systems, BFF patterns
+- **Platform:** CI/CD, github actions, jenkins, developer tooling, design systems, scalable architecture, distributed systems, BFF patterns
 - **Cloud & Infra:** AWS (Lambda, ECS, S3, EventBridge), GCP, Docker, Kubernetes, Terraform, security, compliance (SOC 2, GLBA, CCPA)
 - **DevOps & Data:** Docker, Kubernetes, Helm, GitHub Actions, ArgoCD, Apache Airflow, data pipeline orchestration, observability (Datadog, OpenTelemetry)
 - **AI / LLM:** Anthropic Claude API, OpenAI API, MCP, RAG architectures, semantic search, vector databases, embeddings, agentic workflows, AI-augmented developer workflows
@@ -307,6 +307,9 @@ Surface 3 to 5 most relevant to the JD.
 - **RAG over Engineering Docs:** pgvector plus OpenAI embeddings and a FastAPI backend, with a streaming Next.js UI built on the Vercel AI SDK. Semantic search across 2,000+ internal architecture decision records (ADRs) and runbooks.
 - **Edge-Rendered Identity Flows:** Cloudflare Workers plus Hono, delivering sub-50ms TTFB globally for consumer-facing authentication screens.
 - **Multi-Brand Design-Token Pipeline:** Style Dictionary plus Storybook and Chromatic. The design-token architecture that backed the Strategic Education Inc. multi-brand system and informed later Midigator and Equifax work.
+- **NFT Marketplace (Polygon):** Full-stack NFT marketplace built on Polygon (chosen for significantly lower gas costs than Ethereum mainnet). Solidity smart contracts (ERC-721) covering minting, listing, and peer-to-peer trading; React frontend with ethers.js and web3.js; MetaMask and WalletConnect for wallet-based authentication. Deployed to Polygon mainnet with contract-level ownership and royalty enforcement.
+- **TV Remote Navigation Library (Hungama / Neudesic):** Standalone JavaScript library that mapped D-pad remote-control input events to a spatial focus-management API, enabling standard web UIs to be fully navigated by TV remote without restructuring existing markup. Built for Hungama's Vizio Smart TV streaming app; validated across 100% of target Vizio device variants on Opera SDK 12. Adopted as the internal Neudesic pattern for subsequent smart-TV engagements.
+- **Fitbit Global Redesign — End-to-End Delivery Lead:** Led a 14-person cross-functional team (5 AEM developers, 7 UI developers, 2 QA) through the full SDLC on the fitbit.com global redesign: design handoff, sprint ceremonies, development, testing, and production release. Established Scrum ceremonies and stakeholder demo cadence that surfaced blocking issues 1 to 2 sprints earlier. Shipped on time with zero P0/P1 defects after the program had stalled and been re-scoped twice under prior leadership.
 
 ---
 

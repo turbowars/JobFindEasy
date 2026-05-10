@@ -34,7 +34,7 @@ linkedin.com/in/evolvingdx  |  dheerajsampath.com  |  github.com/turbowars
 
 ### Professional Experience
 
-#### Equifax · [TRACK TITLE] · Austin, TX · Aug 2022 – Present
+#### Equifax · [TRACK TITLE] · Austin, TX · Aug 2022 – May 2026
 
 - Company name, location, and dates: **[LOCKED]**
 - Job title: **[GENERATED]** — Equifax title line is `[JD target title] (Tech Lead)` for Engineering track, `[JD target title] (Engineering Lead)` for Management track.
