@@ -645,6 +645,9 @@ def action_inject_url(url: str = Form(...)):
             }
         )
 
+    # NOTE: this prefilter→score block is the same sequence now owned by
+    # src.enrichment.pipeline.enrich_scored (used by the CLI). Follow-up:
+    # route this route through it too so there's a single copy.
     ok, reason, sponsorship = run_prefilter(job.title, job.description or "")
     db.update_prefilter(job.hash, ok, reason, sponsorship)
 
